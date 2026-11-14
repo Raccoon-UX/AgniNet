@@ -294,7 +294,7 @@ export default function SensorComparisonPage() {
         <div className="space-y-3">
           <div className="flex items-center justify-between text-xs text-slate-400 px-1">
             <span>Showing {events.length} unified event association(s)</span>
-            <span className="font-mono text-[11px] text-slate-500">Algorithm: AgniNet-Harmonize-v1.1</span>
+            <span className="font-mono text-[11px] text-slate-500">Algorithm: AgniNet-Harmonize-v1.1.1</span>
           </div>
 
           <div className="overflow-x-auto rounded-lg border border-white/5">

@@ -78,7 +78,7 @@ def get_effective_footprint_radius_km(obs: NormalizedObservation) -> float:
     NASA FIRMS reports 'scan' (along-scan pixel size in km) and 'track' (along-track pixel size in km),
     which are spatial dimensions in kilometers, not angular degrees.
     The semi-diagonal (circumradius) of a scan x track pixel is sqrt(scan^2 + track^2) / 2.
-    Nominal nadir fallbacks: MODIS 1.0km x 1.0km (0.707 km radius), VIIRS 0.375km x 0.375km (0.265 km radius).
+    Nominal nadir fallbacks: MODIS 1.0km x 1.0km (0.7071 km radius), VIIRS 0.375km x 0.375km (0.2652 km radius).
     """
     if (
         obs.scan_angle is not None
@@ -131,8 +131,217 @@ def generate_event_id(date: str, lat: float, lon: float, source_ids: List[str]) 
     return f"AGNI-EVT-{date.replace('-', '')}-{abs(lat):.2f}{lat_sign}_{abs(lon):.2f}{lon_sign}-{digest}"
 
 
+def resolve_viirs_pass_frp(
+    viirs_obs: List[NormalizedObservation],
+    max_pass_time_delta_minutes: float = 1.0,
+) -> Tuple[Optional[float], Optional[str]]:
+    """
+    Evaluates VIIRS pass identity and computes aggregate Fire Radiative Power (MW).
+    
+    Rigorous Pass-Identity Grouping Rules:
+    1. viirs_obs must be non-empty.
+    2. All contributing observations must originate from the EXACT SAME spacecraft (satellite platform).
+       Same satellite family (e.g. Suomi-NPP vs NOAA-20) does NOT constitute the same pass.
+    3. All contributing observations must share the EXACT SAME acquisition date (YYYY-MM-DD).
+    4. All contributing observations must possess verified, non-null, parseable acquisition_time_utc.
+       If any observation lacks a verified timestamp, pass identity is uncertain -> returns None.
+    5. Maximum temporal delta across all contributing observations must be <= max_pass_time_delta_minutes (1.0m).
+       Satellite overpass of a localized footprint (< 5km) occurs within < 1 second. Detections separated
+       by more than 1 minute originate from different granules or orbits -> returns None to avoid temporal double-counting.
+    
+    Returns:
+        (total_frp, reason_note)
+    """
+    if not viirs_obs:
+        return None, "No VIIRS observations present."
+
+    viirs_frps = [v.frp_mw for v in viirs_obs if v.frp_mw is not None]
+    if not viirs_frps:
+        return None, "No valid FRP telemetry available across VIIRS observations."
+
+    # Rule 2: Single spacecraft platform check
+    unique_satellites = {v.satellite for v in viirs_obs}
+    if len(unique_satellites) > 1:
+        return (
+            None,
+            f"Multi-spacecraft VIIRS detections ({', '.join(sorted(unique_satellites))}); "
+            "cannot aggregate FRP across distinct satellite platforms.",
+        )
+
+    # Rule 3: Single acquisition date check
+    unique_dates = {v.acquisition_date for v in viirs_obs}
+    if len(unique_dates) > 1:
+        return (
+            None,
+            f"Multi-date VIIRS detections ({', '.join(sorted(unique_dates))}); "
+            "cannot aggregate FRP across different calendar dates.",
+        )
+
+    # Rule 4: Timestamp presence check
+    for v in viirs_obs:
+        if not v.acquisition_time_utc or not v.acquisition_time_utc.strip():
+            return (
+                None,
+                f"Missing acquisition time on observation '{v.id}'; "
+                "pass identity uncertain, withholding aggregate FRP.",
+            )
+
+    # Rule 5: Timestamp temporal delta check
+    parsed_dts = []
+    for v in viirs_obs:
+        try:
+            dt = datetime.strptime(
+                f"{v.acquisition_date.strip()} {v.acquisition_time_utc.strip()}",
+                "%Y-%m-%d %H:%M",
+            ).replace(tzinfo=timezone.utc)
+            parsed_dts.append(dt)
+        except (ValueError, TypeError):
+            return (
+                None,
+                f"Malformed acquisition time '{v.acquisition_time_utc}' on observation '{v.id}'; "
+                "pass identity uncertain.",
+            )
+
+    parsed_dts.sort()
+    max_delta_min = (parsed_dts[-1] - parsed_dts[0]).total_seconds() / 60.0
+    if max_delta_min > max_pass_time_delta_minutes:
+        return (
+            None,
+            f"Temporal spread of {max_delta_min:.1f}m across VIIRS detections exceeds single-pass threshold "
+            f"({max_pass_time_delta_minutes}m); represents multiple overpasses/orbits.",
+        )
+
+    # All pass identity checks satisfied: valid single overpass
+    single_sat = viirs_obs[0].satellite
+    time_str = viirs_obs[0].acquisition_time_utc
+    total_frp = round(sum(viirs_frps), 1)
+    return (
+        total_frp,
+        f"Single-pass VIIRS overpass confirmed ({single_sat} at {time_str} UTC, {len(viirs_frps)} sub-pixels).",
+    )
+
+
+class SpatialCandidateIndex:
+    """
+    Geospatial candidate indexing structure guaranteeing 100% candidate recall.
+    Accounts for:
+    1. Antimeridian wrap-around (+/-180 degrees) via modular bin arithmetic.
+    2. Longitude convergence near poles via dynamic latitude-dependent search spans.
+    3. Dedicated polar cap candidate pool for extreme latitudes (|lat| >= 80 deg).
+    4. Cell-boundary safety margins (ceil(delta / cell_size) + 1).
+    """
+
+    KM_PER_DEGREE_LAT = 111.195
+
+    def __init__(self, viirs_obs: List[NormalizedObservation], cell_size_deg: float = 0.5):
+        self.cell_size = cell_size_deg
+        self.n_lat_bins = int(180.0 / cell_size_deg)  # e.g. 360 bins for 0.5 deg
+        self.n_lon_bins = int(360.0 / cell_size_deg)  # e.g. 720 bins for 0.5 deg
+        self.grid: Dict[Tuple[int, int], List[NormalizedObservation]] = {}
+        self.polar_north: List[NormalizedObservation] = []  # lat >= 80.0
+        self.polar_south: List[NormalizedObservation] = []  # lat <= -80.0
+        self._build_index(viirs_obs)
+
+    def _lat_to_bin(self, lat: float) -> int:
+        b = int(math.floor((lat + 90.0) / self.cell_size))
+        return max(0, min(self.n_lat_bins - 1, b))
+
+    def _lon_to_bin(self, lon: float) -> int:
+        # Normalize lon to [-180, 180)
+        norm_lon = ((lon + 180.0) % 360.0) - 180.0
+        b = int(math.floor((norm_lon + 180.0) / self.cell_size))
+        return b % self.n_lon_bins
+
+    def _build_index(self, observations: List[NormalizedObservation]):
+        for obs in observations:
+            try:
+                validate_coordinates(obs.latitude, obs.longitude)
+            except ValueError:
+                continue
+            lat_bin = self._lat_to_bin(obs.latitude)
+            lon_bin = self._lon_to_bin(obs.longitude)
+            self.grid.setdefault((lat_bin, lon_bin), []).append(obs)
+
+            if obs.latitude >= 80.0:
+                self.polar_north.append(obs)
+            elif obs.latitude <= -80.0:
+                self.polar_south.append(obs)
+
+    def query_candidates(
+        self,
+        m: NormalizedObservation,
+        max_search_radius_km: float,
+    ) -> List[NormalizedObservation]:
+        """
+        Retrieves all VIIRS observations that could physically fall within max_search_radius_km.
+        Guarantees zero false negatives across cell boundaries, the antimeridian, and polar caps.
+        """
+        lat, lon = m.latitude, m.longitude
+        delta_lat_deg = max_search_radius_km / self.KM_PER_DEGREE_LAT
+        # Buffer of +1 cell ensures no boundary point is ever missed
+        k_lat = int(math.ceil(delta_lat_deg / self.cell_size)) + 1
+
+        candidates: List[NormalizedObservation] = []
+        seen_ids: Set[str] = set()
+
+        # Polar cap handling: near extreme poles, longitude lines converge to a point
+        if lat + delta_lat_deg >= 80.0 and self.polar_north:
+            for p in self.polar_north:
+                if p.id not in seen_ids:
+                    seen_ids.add(p.id)
+                    candidates.append(p)
+        if lat - delta_lat_deg <= -80.0 and self.polar_south:
+            for p in self.polar_south:
+                if p.id not in seen_ids:
+                    seen_ids.add(p.id)
+                    candidates.append(p)
+
+        # Latitude closest to the pole within search radius determines maximum longitude spread
+        phi_max_abs = min(89.9, max(0.0, abs(lat) + delta_lat_deg))
+        if phi_max_abs >= 80.0:
+            # Polar regime: search all longitude bins across the relevant latitude range
+            search_all_lon = True
+            k_lon = self.n_lon_bins // 2
+        else:
+            search_all_lon = False
+            cos_min = math.cos(math.radians(phi_max_abs))
+            delta_lon_deg = max_search_radius_km / (self.KM_PER_DEGREE_LAT * cos_min)
+            if delta_lon_deg >= 180.0:
+                search_all_lon = True
+                k_lon = self.n_lon_bins // 2
+            else:
+                k_lon = int(math.ceil(delta_lon_deg / self.cell_size)) + 1
+
+        center_lat_bin = self._lat_to_bin(lat)
+        center_lon_bin = self._lon_to_bin(lon)
+
+        for d_lat in range(-k_lat, k_lat + 1):
+            target_lat_bin = center_lat_bin + d_lat
+            if not (0 <= target_lat_bin < self.n_lat_bins):
+                continue
+
+            if search_all_lon:
+                for target_lon_bin in range(self.n_lon_bins):
+                    cell_obs = self.grid.get((target_lat_bin, target_lon_bin), [])
+                    for v in cell_obs:
+                        if v.id not in seen_ids:
+                            seen_ids.add(v.id)
+                            candidates.append(v)
+            else:
+                for d_lon in range(-k_lon, k_lon + 1):
+                    # Antimeridian wrap-around: modulo n_lon_bins seamlessly transitions from bin 0 to 719
+                    target_lon_bin = (center_lon_bin + d_lon) % self.n_lon_bins
+                    cell_obs = self.grid.get((target_lat_bin, target_lon_bin), [])
+                    for v in cell_obs:
+                        if v.id not in seen_ids:
+                            seen_ids.add(v.id)
+                            candidates.append(v)
+
+        return candidates
+
+
 class HarmonizationEngine:
-    ALGORITHM_VERSION = "AgniNet-Harmonize-v1.1"
+    ALGORITHM_VERSION = "AgniNet-Harmonize-v1.1.1"
 
     def __init__(
         self,
@@ -167,16 +376,8 @@ class HarmonizationEngine:
         viirs_obs: List[NormalizedObservation] = [o for o in observations if o.instrument == "VIIRS"]
         all_obs_by_id: Dict[str, NormalizedObservation] = {o.id: o for o in observations}
 
-        # Spatial grid indexing: 0.5 degree bins (~55 km) for fast spatial candidate search
-        grid_cell_size = 0.5
-        viirs_grid: Dict[Tuple[int, int], List[NormalizedObservation]] = {}
-        for v in viirs_obs:
-            try:
-                validate_coordinates(v.latitude, v.longitude)
-            except ValueError:
-                continue
-            cell = (int(math.floor(v.latitude / grid_cell_size)), int(math.floor(v.longitude / grid_cell_size)))
-            viirs_grid.setdefault(cell, []).append(v)
+        # Build hardened spatial index over VIIRS observations
+        spatial_index = SpatialCandidateIndex(viirs_obs, cell_size_deg=0.5)
 
         # Graph vertices and adjacency: edge represents valid candidate association
         # Edge tuple: (neighbor_id, dist_km, time_diff_min, spatial_score, temporal_score, has_temporal_uncertainty)
@@ -192,15 +393,11 @@ class HarmonizationEngine:
                 continue
 
             m_radius = get_effective_footprint_radius_km(m)
-            m_cell_lat = int(math.floor(m.latitude / grid_cell_size))
-            m_cell_lon = int(math.floor(m.longitude / grid_cell_size))
+            # Maximum search radius accounts for MODIS circumradius + maximum possible VIIRS circumradius (0.8km)
+            max_search_radius = max(self.spatial_threshold_km, m_radius + 0.8)
 
-            # Query 3x3 neighboring grid cells
-            candidate_viirs: List[NormalizedObservation] = []
-            for d_lat in (-1, 0, 1):
-                for d_lon in (-1, 0, 1):
-                    neighbor_cell = (m_cell_lat + d_lat, m_cell_lon + d_lon)
-                    candidate_viirs.extend(viirs_grid.get(neighbor_cell, []))
+            # Query spatial index with full antimeridian, polar, and cell-boundary guarantees
+            candidate_viirs = spatial_index.query_candidates(m, max_search_radius)
 
             for v in candidate_viirs:
                 # 1. Geodesic distance & dynamic footprint threshold check
@@ -348,24 +545,18 @@ class HarmonizationEngine:
                 v_times = [v.acquisition_time_utc for v in v_list if v.acquisition_time_utc]
                 all_times = sorted([t for t in ([m.acquisition_time_utc] + v_times) if t])
 
-                # FRP processing:
+                # Strict pass-identity FRP evaluation:
                 viirs_frps = [v.frp_mw for v in v_list if v.frp_mw is not None]
-                # Single-pass VIIRS aggregation policy:
-                # Summing VIIRS FRP is only valid across pixels from the SAME satellite pass.
-                # If VIIRS observations come from different satellite platforms, summing is prohibited to prevent double-counting.
-                unique_viirs_sats = {v.satellite for v in v_list}
-                if len(unique_viirs_sats) == 1 and viirs_frps:
-                    viirs_total_frp = round(sum(viirs_frps), 1)
-                elif len(unique_viirs_sats) > 1:
-                    # Multi-pass VIIRS observations: preserve individual values, set aggregated total to None with note
-                    viirs_total_frp = None
-                else:
-                    viirs_total_frp = None
+                viirs_total_frp, pass_note = resolve_viirs_pass_frp(v_list)
+
+                unique_viirs_sats = sorted(list({v.satellite for v in v_list}))
 
                 if has_temporal_uncertainty:
                     # AMBIGUOUS due to missing acquisition time
                     match_score = round(min(0.40, 0.55 * mean_spatial_score * 0.6), 3)
                     notes = "AMBIGUOUS: Missing acquisition time prevents definitive temporal verification."
+                    if pass_note:
+                        notes += f" [{pass_note}]"
                     evt = HarmonizedEvent(
                         id=generate_event_id(m.acquisition_date, rep_lat, rep_lon, comp_ids),
                         classification="AMBIGUOUS",
@@ -377,7 +568,7 @@ class HarmonizationEngine:
                         modis_observation_ids=[m.id],
                         viirs_observation_ids=[v.id for v in v_list],
                         modis_satellites=[m.satellite],
-                        viirs_satellites=sorted(list(unique_viirs_sats)),
+                        viirs_satellites=unique_viirs_sats,
                         modis_frp_mw=m.frp_mw,
                         viirs_total_frp_mw=viirs_total_frp,
                         viirs_individual_frps=viirs_frps,
@@ -394,11 +585,9 @@ class HarmonizationEngine:
                     # Heuristic match score: 0.55 * spatial + 0.45 * temporal
                     temp_s = mean_temporal_score if mean_temporal_score is not None else 0.5
                     match_score = round(max(0.0, min(1.0, 0.55 * mean_spatial_score + 0.45 * temp_s)), 3)
-                    notes = (
-                        f"MATCHED: 1 MODIS pixel ({m.satellite}) confirmed by {len(v_list)} sub-pixel VIIRS detection(s)."
-                        if len(unique_viirs_sats) <= 1
-                        else f"MATCHED: 1 MODIS pixel ({m.satellite}) confirmed by {len(v_list)} VIIRS detection(s) across {len(unique_viirs_sats)} satellite passes (FRP preserved individually)."
-                    )
+                    notes = f"MATCHED: 1 MODIS pixel ({m.satellite}) confirmed by {len(v_list)} sub-pixel VIIRS detection(s)."
+                    if pass_note and viirs_total_frp is None:
+                        notes += f" Note on FRP: {pass_note}"
                     evt = HarmonizedEvent(
                         id=generate_event_id(m.acquisition_date, rep_lat, rep_lon, comp_ids),
                         classification="MATCHED",
@@ -410,7 +599,7 @@ class HarmonizationEngine:
                         modis_observation_ids=[m.id],
                         viirs_observation_ids=[v.id for v in v_list],
                         modis_satellites=[m.satellite],
-                        viirs_satellites=sorted(list(unique_viirs_sats)),
+                        viirs_satellites=unique_viirs_sats,
                         modis_frp_mw=m.frp_mw,
                         viirs_total_frp_mw=viirs_total_frp,
                         viirs_individual_frps=viirs_frps,
@@ -430,6 +619,9 @@ class HarmonizationEngine:
                 all_times = sorted([o.acquisition_time_utc for o in comp_obs if o.acquisition_time_utc])
                 modis_frps = [m.frp_mw for m in m_list if m.frp_mw is not None]
                 viirs_frps = [v.frp_mw for v in v_list if v.frp_mw is not None]
+
+                # Strict pass-identity evaluation:
+                viirs_total_frp, pass_note = resolve_viirs_pass_frp(v_list)
 
                 # Collect all component edge metrics
                 comp_dists = []
@@ -456,6 +648,8 @@ class HarmonizationEngine:
                     f"AMBIGUOUS: Multi-sensor candidate association contested across overlapping footprints "
                     f"({len(m_list)} MODIS, {len(v_list)} VIIRS). Chained/competing relationships prevent unambiguous 1-to-N matching."
                 )
+                if pass_note and viirs_total_frp is None:
+                    notes += f" [VIIRS FRP: {pass_note}]"
 
                 evt = HarmonizedEvent(
                     id=generate_event_id(comp_obs[0].acquisition_date, rep_lat, rep_lon, comp_ids),
@@ -470,7 +664,7 @@ class HarmonizationEngine:
                     modis_satellites=sorted(list({m.satellite for m in m_list})),
                     viirs_satellites=sorted(list({v.satellite for v in v_list})),
                     modis_frp_mw=round(sum(modis_frps) / len(modis_frps), 1) if modis_frps else None,
-                    viirs_total_frp_mw=round(sum(viirs_frps), 1) if viirs_frps and len({v.satellite for v in v_list}) == 1 else None,
+                    viirs_total_frp_mw=viirs_total_frp,
                     viirs_individual_frps=viirs_frps,
                     spatial_distance_km=round(min(comp_dists), 3) if comp_dists else None,
                     temporal_difference_minutes=round(min(comp_times), 1) if comp_times else None,

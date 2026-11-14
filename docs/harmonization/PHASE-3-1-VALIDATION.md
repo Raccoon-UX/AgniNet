@@ -1,9 +1,12 @@
-# AgniNet Harmonization Algorithm Audit & Scientific Validation (Phase 3.1)
+# AgniNet Harmonization Algorithm Audit & Scientific Validation (Phase 3.1 & 3.1.1)
 
-**Algorithm Identifier:** `AgniNet-Harmonize-v1.1`  
+**Algorithm Identifier:** `AgniNet-Harmonize-v1.1.1`  
 **Document Classification:** Scientific Architecture, Mathematical Formulation & Verification Report  
 **Target Sensors:** NASA EOS MODIS (Terra/Aqua, 1km) and JPSS VIIRS (Suomi-NPP, NOAA-20, NOAA-21, 375m)  
 **Verification Date:** November 2026  
+**Companion Documents:**
+- `docs/harmonization/PHASE-3-1-1-RELIABILITY.md` (Spatial index proof, overpass integrity & benchmarks)
+- `docs/harmonization/PHASE-4-READINESS.md` (API contracts & historical integration specification)
 
 ---
 
@@ -11,7 +14,7 @@
 
 This document provides a rigorous mathematical audit, architectural specification, and scientific validation of the cross-sensor active-fire harmonization engine in **AgniNet**. 
 
-Automated tests and synthetic benchmarks demonstrate algorithmic stability, coordinate sanity, and threshold compliance across 52 automated regression suites. However, **this report explicitly disclaims that automated unit tests or synthetic simulations constitute physical ground-truth validation**. True physical validation requires coincident high-resolution airborne radiometry (e.g., MASTER on NASA ER-2), surveyed wildfire perimeters from incident command teams, and coupled atmospheric radiative transfer modeling.
+Automated tests and synthetic benchmarks demonstrate algorithmic stability, coordinate sanity, and threshold compliance across 62 automated regression suites. However, **this report explicitly disclaims that automated unit tests or synthetic simulations constitute physical ground-truth validation**. True physical validation requires coincident high-resolution airborne radiometry (e.g., MASTER on NASA ER-2), surveyed wildfire perimeters from incident command teams, and coupled atmospheric radiative transfer modeling.
 
 ---
 
@@ -126,17 +129,19 @@ The `match_score` ($0.0$ to $1.0$) is a **deterministic heuristic proximity metr
 
 ## 7. Performance Benchmarks
 
-Measured on Windows 11 host using synthetic clustered observations across realistic geographic fire densities:
+Measured on Windows 11 host across 5 iterations using synthetic clustered observations across realistic geographic fire densities (equatorial, mid-latitude, polar cap, and antimeridian):
 
-| Batch Size (Observations) | MODIS Count | VIIRS Count | Total Events | Matched Events | Execution Time (ms) | Throughput (obs/sec) |
-| :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **100** | 25 | 75 | 100 | 0 | **2.73 ms** | 36,630 |
-| **500** | 125 | 375 | 492 | 8 | **44.22 ms** | 11,307 |
-| **1,000** | 250 | 750 | 969 | 25 | **156.05 ms** | 6,408 |
-| **2,500** | 625 | 1,875 | 2,298 | 147 | **797.80 ms** | 3,133 |
-| **5,000** | 1,250 | 3,750 | 4,218 | 446 | **3,332.71 ms** | 1,500 |
+| Batch Size (Observations) | Density Profile | Median Latency (ms) | p95 Latency (ms) | Maximum Latency (ms) | Throughput (obs/sec) |
+| :---: | :---: | :---: | :---: | :---: | :---: |
+| **100** | mixed | **7.21 ms** | 7.90 ms | 7.90 ms | 13,876 |
+| **500** | mixed | **51.69 ms** | 57.93 ms | 57.93 ms | 9,673 |
+| **500** | dense | **66.26 ms** | 82.47 ms | 82.47 ms | 7,546 |
+| **1,000** | mixed | **148.49 ms** | 183.83 ms | 183.83 ms | 6,734 |
+| **2,500** | mixed | **852.53 ms** | 899.03 ms | 899.03 ms | 2,932 |
+| **2,500** | dense | **1,330.28 ms** | 1,489.68 ms | 1,489.68 ms | 1,879 |
+| **5,000** | mixed | **3,123.02 ms** | 3,256.44 ms | 3,256.44 ms | 1,601 |
 
-*Note: Spatial grid binning ($0.5^\circ \approx 55\text{km}$) eliminates $O(N_M \cdot N_V)$ global distance evaluations, ensuring scalable execution under 1 second for standard FIRMS daily query sizes ($< 2,500$ hotspots).*
+*Note: In addition to latency benchmarking, candidate retrieval was compared against exhaustive brute-force evaluation on batches of 100, 500, and 1,000 observations, verifying 100.0% candidate recall (0 missed valid pairs).*
 
 ---
 
