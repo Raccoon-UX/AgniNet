@@ -27,7 +27,7 @@ def test_historical_summary_endpoint():
     assert data["modis_frp_gigawatts"] >= 0.0
     assert data["viirs_frp_gigawatts"] >= 0.0
 
-    assert data["data_source"] in {"DEMO_HISTORICAL_ARCHIVE", "NASA_FIRMS_LIVE_ARCHIVE"}
+    assert data["data_source"] in {"DEMO_HISTORICAL_ARCHIVE", "NASA_FIRMS_LIVE_ARCHIVE", "MIXED_HISTORICAL_ARCHIVE"}
     assert "provenance" in data
 
 
@@ -540,10 +540,12 @@ def test_provenance_spoofing_prevention():
 def test_render_blueprint_deployment_configuration():
     """
     Verifies that root render.yaml is present, valid YAML, and configures
-    persistent disk mounts and secret generation securely.
+    temporary free-tier deployment without persistent disk declarations,
+    using /tmp/agninet_historical.db for SQLite and secure secret generation.
     """
     import os
     import yaml
+    from app.services.historical_service import HistoricalRepository
 
     repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     render_yaml_path = os.path.join(repo_root, "render.yaml")
@@ -560,18 +562,28 @@ def test_render_blueprint_deployment_configuration():
     api_service = next((s for s in services if s.get("name") in {"agninet-api", "agninet-backend"}), None)
     assert api_service is not None, "render.yaml must define agninet-api service."
 
-    # Verify persistent disk
-    assert "disk" in api_service, "Backend service must declare persistent disk."
-    disk = api_service["disk"]
-    assert disk["mountPath"] == "/var/data"
-    assert disk["name"] == "agninet-data"
+    # Verify free plan and absence of disk declaration (Render free tier does not support persistent disks)
+    assert api_service.get("plan") == "free", "Backend service must use free plan for temporary deployment."
+    assert "disk" not in api_service, "Backend service must not declare disk on free plan."
 
     # Verify environment variables
     env_vars = {item["key"]: item for item in api_service.get("envVars", [])}
     assert "DATABASE_PATH" in env_vars
-    assert env_vars["DATABASE_PATH"]["value"] == "/var/data/agninet_historical.db"
+    assert env_vars["DATABASE_PATH"]["value"] == "/tmp/agninet_historical.db"
+    assert env_vars.get("ENVIRONMENT", {}).get("value") == "production"
+    assert "DATABASE_URL" not in env_vars, "DATABASE_URL must not be defined for SQLite deployment."
 
     # Verify secrets use generateValue or sync:false (NO raw secret strings)
     assert env_vars.get("INGESTION_API_KEY", {}).get("generateValue") is True
     assert env_vars.get("NASA_ARCHIVE_INGESTION_KEY", {}).get("generateValue") is True
     assert env_vars.get("NASA_FIRMS_MAP_KEY", {}).get("sync") is False
+
+    # Ensure SQLite initializes successfully at /tmp/agninet_historical.db
+    from app.db.database import get_db_connection, init_db
+    init_db("/tmp/agninet_historical.db")
+    with get_db_connection("/tmp/agninet_historical.db") as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = {row[0] for row in cursor.fetchall()}
+        assert "historical_observations" in tables
+        assert "ingestion_logs" in tables

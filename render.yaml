@@ -1,22 +1,20 @@
 # Render Blueprint specification for AgniNet
-# Automatically provisions FastAPI backend with persistent disk storage and Next.js frontend.
+# Temporary Free-Tier Deployment Configuration
 # Reference: https://render.com/docs/blueprint-spec
+# NOTE: The free tier uses ephemeral /tmp storage for SQLite (/tmp/agninet_historical.db).
+# Historical records stored in /tmp are temporary and will be cleared on instance spin-down, restarts, or redeployments.
 
 services:
   # AgniNet FastAPI Backend Service
   - type: web
     name: agninet-api
     env: python
-    plan: starter  # Persistent disk requires starter plan or higher on Render
+    plan: free
     buildCommand: pip install -r backend/requirements.txt
     startCommand: uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port $PORT
-    disk:
-      name: agninet-data
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
       - key: DATABASE_PATH
-        value: /var/data/agninet_historical.db
+        value: /tmp/agninet_historical.db
       - key: ENVIRONMENT
         value: production
       - key: INGESTION_API_KEY

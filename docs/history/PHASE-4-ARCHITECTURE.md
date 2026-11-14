@@ -13,7 +13,7 @@ Phase 4 through Phase 4.1.1 establish a production-grade, scientifically hardene
 
 Phase 4.1.1 reinforces provenance trust and deployment verification:
 1. **Server-Authoritative Provenance:** Never trusts client-supplied `is_live=True`. Strictly separates verified NASA archive ingestion from manual, community, and demo ingestion workflows. Overrides conflicting client flags and preserves auditable source metadata per observation.
-2. **Production Render Blueprint:** Root-level `render.yaml` declares services for the FastAPI backend and Next.js frontend, persistent disk mounts (`/var/data`), and Render-managed secret generation (`generateValue: true`).
+2. **Temporary Free-Tier Render Blueprint:** Root-level `render.yaml` declares services for the FastAPI backend and Next.js frontend on Render's `free` plan, utilizing ephemeral `/tmp/agninet_historical.db` SQLite storage (no persistent disk declaration) and Render-managed secret generation (`generateValue: true`).
 3. **Comparative Activity Index:** Consistently defines the calendar metric as a **sensor-normalized comparative activity index** relative to the query window, avoiding false equivalences with absolute physical energy or cross-sensor combined FRP.
 
 ---
@@ -50,7 +50,7 @@ Phase 4.1.1 reinforces provenance trust and deployment verification:
 │                   Storage & Repository Tier (SQLite)                   │
 │  - backend/app/db/historical_repo.py (HistoricalRepository)            │
 │  - backend/app/db/database.py (DatabaseManager, connection pool)       │
-│  - Mount Path: Configured via DATABASE_PATH (e.g. /var/data/...)       │
+│  - Mount Path: Configured via DATABASE_PATH (e.g. /tmp/...)            │
 │  - Secondary B-tree indexes on date, region, sensor, and coordinates   │
 └────────────────────────────────────────────────────────────────────────┘
 ```
@@ -65,25 +65,31 @@ Phase 4.1.1 reinforces provenance trust and deployment verification:
 - **Portability:** Encapsulated behind `HistoricalRepository`, facilitating clean future migration to PostgreSQL/PostGIS.
 - **Version Control Safety:** SQLite files are strictly excluded from git tracking via `.gitignore`.
 
-### 3.2 Render Blueprint Configuration (`render.yaml`)
-To prevent data loss in containerized ephemeral environments, persistent disk storage is explicitly declared:
+### 3.2 Render Free-Tier Blueprint Configuration (`render.yaml`)
+For temporary free-tier deployment on Render:
+- The backend runs on Render's `free` plan.
+- The persistent disk (`disk:`) declaration is omitted because Render free-tier instances do not support attached persistent disks.
+- SQLite is configured to store database files at `DATABASE_PATH=/tmp/agninet_historical.db`.
+
+> [!WARNING]
+> **Ephemeral Storage Notice:** On Render free-tier, data stored in `/tmp/agninet_historical.db` is ephemeral and temporary. The container filesystem is reset whenever the instance spins down due to inactivity (typically after 15 minutes), restarts, or redeploys. On cold-start, AgniNet will automatically re-seed baseline historical records if the database is initialized empty.
 
 ```yaml
+# Render Blueprint specification for AgniNet
+# Temporary Free-Tier Deployment Configuration
+# Reference: https://render.com/docs/blueprint-spec
+
 services:
   # AgniNet FastAPI Backend Service
   - type: web
     name: agninet-api
     env: python
-    plan: starter  # Persistent disk requires starter plan or higher on Render
+    plan: free
     buildCommand: pip install -r backend/requirements.txt
     startCommand: uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port $PORT
-    disk:
-      name: agninet-data
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
       - key: DATABASE_PATH
-        value: /var/data/agninet_historical.db
+        value: /tmp/agninet_historical.db
       - key: ENVIRONMENT
         value: production
       - key: INGESTION_API_KEY
@@ -109,8 +115,8 @@ services:
 ```
 
 ### 3.3 Manual Dashboard Setup
-1. **NASA FIRMS MAP KEY:** Set `NASA_FIRMS_MAP_KEY` in the Render Dashboard under `agninet-api` -> Environment.
-2. **Persistent Disk Attachment:** Render Starter plan provisions the `/var/data` disk automatically from the blueprint.
+1. **NASA FIRMS MAP KEY:** Set `NASA_FIRMS_MAP_KEY` in the Render Dashboard under `agninet-api` -> Environment (`sync: false` requires manual dashboard configuration).
+2. **Ephemeral Storage Behavior:** No persistent disk is attached on the free tier. The `/tmp/agninet_historical.db` file is created automatically on startup by `init_db()`.
 3. **Directory Guarantee:** `init_db()` ensures `os.makedirs(os.path.dirname(target_path), exist_ok=True)` runs before establishing SQLite connections.
 
 ---

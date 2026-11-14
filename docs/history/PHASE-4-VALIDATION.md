@@ -12,7 +12,7 @@
 This document provides rigorous scientific and technical validation of **Phase 4, Phase 4.1, and Phase 4.1.1: Historical Fire Analytics, Provenance Trust & Deployment Verification**. It evaluates:
 1. Mathematical and physical integrity of the **Sensor-Normalized Comparative Activity Index** (and elimination of cross-sensor FRP addition).
 2. Server-authoritative **Provenance Trust & Spoofing Immunity** (overriding client-supplied `is_live=True`).
-3. Root-level **Render Blueprint Configuration** (`render.yaml`) with persistent disk storage (`/var/data`).
+3. Root-level **Render Blueprint Configuration** (`render.yaml`) for temporary free-tier deployment (`/tmp/agninet_historical.db`).
 4. Multi-tier **Data Provenance State Machine** handling empty, demo-only, live-only, and mixed-source archives with explicit `is_synthetic` auditing.
 5. **Ingestion Security**: Token-based authentication, cryptographic NASA archive verification, batch throttling (max 1,000 records), and radiometric bounds checks.
 6. Automated regression test suite results (76/76 passing).
@@ -71,17 +71,23 @@ In `test_provenance_spoofing_prevention()`:
 
 ---
 
-## 4. Render Deployment Blueprint & Persistent Storage
+## 4. Render Temporary Free-Tier Deployment Configuration
 
-### 4.1 Ephemeral Container Warning
-Standard cloud container deployments run on ephemeral filesystems. Any SQLite database located in relative application directories is permanently destroyed when the container restarts or redeploys.
+### 4.1 Ephemeral Container Storage Notice
+Render free tier does not support persistent disks (`disk:` blocks). Under this temporary free-tier deployment:
+- SQLite database storage is configured at `DATABASE_PATH=/tmp/agninet_historical.db`.
+- **Data Persistence Disclaimer:** Storage in `/tmp` is temporary and ephemeral. The container filesystem is wiped whenever the instance spins down due to inactivity (after 15 minutes on the free tier), restarts, or redeploys.
+- **Cold-Start Auto-Seeding:** On cold boot, AgniNet detects an empty database and automatically re-seeds the 180-day baseline historical dataset (`DEMO_HISTORICAL_ARCHIVE`), ensuring analytics dashboards and visualizations remain functional.
 
 ### 4.2 Blueprint Specification (`render.yaml`)
-A valid blueprint is committed to the repository root:
-- Provisions `agninet-api` (Python Web Service) on the Starter plan with attached persistent disk `agninet-data` mounted at `/var/data` (1 GB).
-- Configures `DATABASE_PATH=/var/data/agninet_historical.db`.
+A valid Render Blueprint is configured at the repository root:
+- Provisions `agninet-api` (Python Web Service) on the `free` plan without persistent disk declarations.
+- Configures `DATABASE_PATH=/tmp/agninet_historical.db`.
+- Preserves `ENVIRONMENT=production`.
 - Declares secrets using Render-generated random values (`generateValue: true`) for `INGESTION_API_KEY` and `NASA_ARCHIVE_INGESTION_KEY`.
-- Provisions `agninet-web` (Node.js Next.js Web Service) referencing `agninet-api` host.
+- Sets `NASA_FIRMS_MAP_KEY` as `sync: false` for secure manual dashboard configuration.
+- Does not declare `DATABASE_URL`.
+- Provisions `agninet-web` (Node.js Next.js Web Service) on the `free` plan referencing `agninet-api` host.
 
 ---
 
