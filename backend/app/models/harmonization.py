@@ -1,0 +1,91 @@
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Literal, Optional
+from pydantic import BaseModel, Field
+
+MatchClassification = Literal["MATCHED", "MODIS_ONLY", "VIIRS_ONLY", "AMBIGUOUS"]
+
+
+class HarmonizedEvent(BaseModel):
+    """
+    Unified cross-sensor fire event associating MODIS and VIIRS active-fire detections.
+    Preserves original sensor telemetry without unscientific cross-sensor FRP addition or averaging.
+    """
+    id: str = Field(description="Stable deterministic unified event identifier")
+    classification: MatchClassification = Field(
+        description="MATCHED (cross-sensor supported), MODIS_ONLY, VIIRS_ONLY, or AMBIGUOUS (competing associations)"
+    )
+    latitude: float = Field(ge=-90.0, le=90.0, description="Representative event centroid latitude (WGS84)")
+    longitude: float = Field(ge=-180.0, le=180.0, description="Representative event centroid longitude (WGS84)")
+    acquisition_date: str = Field(description="Primary event acquisition date (YYYY-MM-DD)")
+    earliest_acq_utc: Optional[str] = Field(default=None, description="Earliest observed acquisition time (HH:MM)")
+    latest_acq_utc: Optional[str] = Field(default=None, description="Latest observed acquisition time (HH:MM)")
+    
+    # Associated observations
+    modis_observation_ids: List[str] = Field(default_factory=list, description="Associated MODIS observation record IDs")
+    viirs_observation_ids: List[str] = Field(default_factory=list, description="Associated VIIRS observation record IDs")
+    
+    # Spacecraft & sensor platforms
+    modis_satellites: List[str] = Field(default_factory=list, description="MODIS spacecraft (Terra, Aqua)")
+    viirs_satellites: List[str] = Field(default_factory=list, description="VIIRS spacecraft (Suomi-NPP, NOAA-20, NOAA-21)")
+    
+    # Radiative energy metrics — preserved individually by sensor (NEVER summed across different sensor instruments)
+    modis_frp_mw: Optional[float] = Field(
+        default=None,
+        description="Primary MODIS Fire Radiative Power (MW). Preserved as measured."
+    )
+    viirs_total_frp_mw: Optional[float] = Field(
+        default=None,
+        description="Sum of FRP strictly across co-located sub-pixel VIIRS detections (same instrument). None if no VIIRS."
+    )
+    viirs_individual_frps: List[float] = Field(
+        default_factory=list,
+        description="Individual FRP values of associated VIIRS pixels"
+    )
+    
+    # Association geometry & timing
+    spatial_distance_km: Optional[float] = Field(
+        default=None,
+        description="Geodesic distance between MODIS and VIIRS centroids (km)"
+    )
+    temporal_difference_minutes: Optional[float] = Field(
+        default=None,
+        description="Absolute acquisition time difference (minutes)"
+    )
+    match_score: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Association confidence score (0.0 to 1.0) derived from spatial & temporal proximity"
+    )
+    evidence_notes: str = Field(
+        default="",
+        description="Scientific evidence trail explaining matching, footprint overlap, or ambiguity"
+    )
+    algorithm_version: str = Field(
+        default="AgniNet-Harmonize-v1.0",
+        description="Version identifier of the harmonization matching algorithm"
+    )
+
+
+class HarmonizationStats(BaseModel):
+    """Statistical summary of the cross-sensor harmonization run."""
+    total_events: int = Field(description="Total unified events created")
+    matched_events: int = Field(description="Events confirmed with dual-sensor (MODIS + VIIRS) support")
+    modis_only_count: int = Field(description="Observations without qualifying VIIRS counterpart")
+    viirs_only_count: int = Field(description="Observations without qualifying MODIS counterpart")
+    ambiguous_count: int = Field(description="Observations with competing candidate matches or temporal uncertainty")
+    spatial_threshold_km: float = Field(description="Applied spatial distance threshold (km)")
+    temporal_threshold_minutes: float = Field(description="Applied temporal synchronization window (minutes)")
+    mean_spatial_distance_km: Optional[float] = None
+    mean_temporal_difference_minutes: Optional[float] = None
+    average_match_score: Optional[float] = None
+
+
+class HarmonizationResponse(BaseModel):
+    events: List[HarmonizedEvent]
+    stats: HarmonizationStats
+    is_live: bool
+    data_source: Literal["NASA_FIRMS_LIVE", "DEMO_FIXTURES"]
+    fetched_at: str
+    algorithm_version: str = "AgniNet-Harmonize-v1.0"
+    applied_thresholds: Dict[str, Any] = Field(default_factory=dict)

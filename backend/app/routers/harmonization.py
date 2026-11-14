@@ -1,0 +1,194 @@
+import re
+from datetime import datetime
+from typing import Any, Dict, List, Literal, Optional
+from fastapi import APIRouter, HTTPException, Query
+from app.models.harmonization import HarmonizationResponse, HarmonizationStats, HarmonizedEvent
+from app.services.firms_client import firms_client
+from app.services.harmonizer import HarmonizationEngine
+
+router = APIRouter(prefix="/api/harmonization", tags=["Harmonization Engine"])
+
+VALID_DATE_REGEX = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+async def _fetch_and_harmonize(
+    source: str = "ALL",
+    min_lon: Optional[float] = None,
+    min_lat: Optional[float] = None,
+    max_lon: Optional[float] = None,
+    max_lat: Optional[float] = None,
+    day_range: int = 1,
+    date: Optional[str] = None,
+    min_frp: Optional[float] = None,
+    demo: bool = False,
+    spatial_threshold_km: float = 2.0,
+    temporal_threshold_minutes: float = 120.0,
+) -> HarmonizationResponse:
+    # Validate bounding box if any coordinate is provided
+    bbox: Optional[List[float]] = None
+    bbox_coords = [min_lon, min_lat, max_lon, max_lat]
+    if any(c is not None for c in bbox_coords):
+        if not all(c is not None for c in bbox_coords):
+            raise HTTPException(
+                status_code=400,
+                detail="Incomplete bounding box: min_lon, min_lat, max_lon, and max_lat must all be provided.",
+            )
+        if min_lon >= max_lon:  # type: ignore
+            raise HTTPException(status_code=400, detail="Invalid bounding box: min_lon must be less than max_lon.")
+        if min_lat >= max_lat:  # type: ignore
+            raise HTTPException(status_code=400, detail="Invalid bounding box: min_lat must be less than max_lat.")
+        bbox = [min_lon, min_lat, max_lon, max_lat]  # type: ignore
+
+    # Validate date string if provided
+    if date:
+        if not VALID_DATE_REGEX.match(date):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid date format '{date}'. Expected YYYY-MM-DD.",
+            )
+        try:
+            datetime.strptime(date, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid calendar date '{date}'.")
+
+    # Fetch normalized fire observations buffer
+    raw_response = await firms_client.get_observations(
+        source=source,
+        bbox=bbox,
+        day_range=day_range,
+        date_str=date,
+        min_frp=min_frp,
+        force_demo=demo,
+    )
+
+    engine = HarmonizationEngine(
+        spatial_threshold_km=spatial_threshold_km,
+        temporal_threshold_minutes=temporal_threshold_minutes,
+    )
+
+    return engine.harmonize(
+        observations=raw_response.observations,
+        is_live=raw_response.is_live,
+        data_source=raw_response.data_source,
+    )
+
+
+@router.get("/events", response_model=HarmonizationResponse)
+async def get_harmonized_events(
+    source: str = Query(default="ALL"),
+    min_lon: Optional[float] = Query(default=None, ge=-180.0, le=180.0),
+    min_lat: Optional[float] = Query(default=None, ge=-90.0, le=90.0),
+    max_lon: Optional[float] = Query(default=None, ge=-180.0, le=180.0),
+    max_lat: Optional[float] = Query(default=None, ge=-90.0, le=90.0),
+    day_range: int = Query(default=1, ge=1, le=10),
+    date: Optional[str] = Query(default=None),
+    min_frp: Optional[float] = Query(default=None, ge=0.0),
+    spatial_threshold_km: float = Query(default=2.0, ge=0.1, le=50.0, description="Max spatial distance threshold (km)"),
+    temporal_threshold_minutes: float = Query(default=120.0, ge=1.0, le=1440.0, description="Max temporal delta (minutes)"),
+    classification: Optional[Literal["MATCHED", "MODIS_ONLY", "VIIRS_ONLY", "AMBIGUOUS"]] = Query(
+        default=None, description="Optional classification filter"
+    ),
+    demo: bool = Query(default=False),
+) -> HarmonizationResponse:
+    """
+    Returns unified cross-sensor fire events associating MODIS (1km) and VIIRS (375m) observations.
+    Never sums FRP across sensors.
+    """
+    resp = await _fetch_and_harmonize(
+        source=source,
+        min_lon=min_lon,
+        min_lat=min_lat,
+        max_lon=max_lon,
+        max_lat=max_lat,
+        day_range=day_range,
+        date=date,
+        min_frp=min_frp,
+        demo=demo,
+        spatial_threshold_km=spatial_threshold_km,
+        temporal_threshold_minutes=temporal_threshold_minutes,
+    )
+
+    if classification:
+        filtered_events = [e for e in resp.events if e.classification == classification]
+        resp.events = filtered_events
+
+    return resp
+
+
+@router.get("/stats", response_model=HarmonizationStats)
+async def get_harmonization_stats(
+    source: str = Query(default="ALL"),
+    min_lon: Optional[float] = Query(default=None, ge=-180.0, le=180.0),
+    min_lat: Optional[float] = Query(default=None, ge=-90.0, le=90.0),
+    max_lon: Optional[float] = Query(default=None, ge=-180.0, le=180.0),
+    max_lat: Optional[float] = Query(default=None, ge=-90.0, le=90.0),
+    day_range: int = Query(default=1, ge=1, le=10),
+    date: Optional[str] = Query(default=None),
+    min_frp: Optional[float] = Query(default=None, ge=0.0),
+    spatial_threshold_km: float = Query(default=2.0, ge=0.1, le=50.0),
+    temporal_threshold_minutes: float = Query(default=120.0, ge=1.0, le=1440.0),
+    demo: bool = Query(default=False),
+) -> HarmonizationStats:
+    """Returns statistical metrics summarizing cross-sensor matching outcomes."""
+    resp = await _fetch_and_harmonize(
+        source=source,
+        min_lon=min_lon,
+        min_lat=min_lat,
+        max_lon=max_lon,
+        max_lat=max_lat,
+        day_range=day_range,
+        date=date,
+        min_frp=min_frp,
+        demo=demo,
+        spatial_threshold_km=spatial_threshold_km,
+        temporal_threshold_minutes=temporal_threshold_minutes,
+    )
+    return resp.stats
+
+
+@router.get("/observations")
+async def get_harmonized_observation_partitions(
+    source: str = Query(default="ALL"),
+    min_lon: Optional[float] = Query(default=None, ge=-180.0, le=180.0),
+    min_lat: Optional[float] = Query(default=None, ge=-90.0, le=90.0),
+    max_lon: Optional[float] = Query(default=None, ge=-180.0, le=180.0),
+    max_lat: Optional[float] = Query(default=None, ge=-90.0, le=90.0),
+    day_range: int = Query(default=1, ge=1, le=10),
+    date: Optional[str] = Query(default=None),
+    min_frp: Optional[float] = Query(default=None, ge=0.0),
+    spatial_threshold_km: float = Query(default=2.0, ge=0.1, le=50.0),
+    temporal_threshold_minutes: float = Query(default=120.0, ge=1.0, le=1440.0),
+    demo: bool = Query(default=False),
+) -> Dict[str, Any]:
+    """
+    Returns observations classified into matched and unmatched groupings.
+    """
+    resp = await _fetch_and_harmonize(
+        source=source,
+        min_lon=min_lon,
+        min_lat=min_lat,
+        max_lon=max_lon,
+        max_lat=max_lat,
+        day_range=day_range,
+        date=date,
+        min_frp=min_frp,
+        demo=demo,
+        spatial_threshold_km=spatial_threshold_km,
+        temporal_threshold_minutes=temporal_threshold_minutes,
+    )
+
+    matched_events = [e for e in resp.events if e.classification == "MATCHED"]
+    modis_only_events = [e for e in resp.events if e.classification == "MODIS_ONLY"]
+    viirs_only_events = [e for e in resp.events if e.classification == "VIIRS_ONLY"]
+    ambiguous_events = [e for e in resp.events if e.classification == "AMBIGUOUS"]
+
+    return {
+        "stats": resp.stats,
+        "is_live": resp.is_live,
+        "data_source": resp.data_source,
+        "fetched_at": resp.fetched_at,
+        "matched": matched_events,
+        "modis_only": modis_only_events,
+        "viirs_only": viirs_only_events,
+        "ambiguous": ambiguous_events,
+    }

@@ -190,8 +190,8 @@ export const KpiCards: React.FC<KpiCardsProps> = ({ kpis, isLive = false }) => {
             <span className="text-[11px]">Harmonized Dual-Pass</span>
             <span className="font-mono text-amber-300 text-[11px] font-semibold">
               {kpis.harmonizedMatches != null
-                ? `${kpis.harmonizedMatches.toLocaleString()} Clusters`
-                : "Pending Phase 3"}
+                ? `${kpis.harmonizedMatches.toLocaleString()} Dual-Matches`
+                : "0 Dual-Matches"}
             </span>
           </div>
         </div>

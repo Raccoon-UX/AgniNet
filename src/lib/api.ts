@@ -2,6 +2,7 @@ import {
   BackendFireResponse,
   BackendHealthResponse,
   BackendObservation,
+  HarmonizationResponse,
   HotspotKpis,
   HotspotObservation,
 } from "@/types/fire";
@@ -92,6 +93,38 @@ export async function fetchObservations(
     const data: BackendFireResponse = await res.json();
     const mapped = data.observations.map(mapBackendToHotspot);
 
+    // Query Phase 3 Cross-Sensor Harmonization Engine to link real MODIS and VIIRS dual-sensor matches
+    let realHarmonizedMatches = 0;
+    try {
+      const harmRes = await fetch(`${API_BASE_URL}/api/harmonization/events?${query.toString()}`, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      });
+      if (harmRes.ok) {
+        const harmData: HarmonizationResponse = await harmRes.json();
+        realHarmonizedMatches = harmData.stats.matched_events;
+        const matchedObsIds = new Set<string>();
+        const eventIdByObs = new Map<string, string>();
+        for (const evt of harmData.events) {
+          if (evt.classification === "MATCHED") {
+            for (const id of [...evt.modis_observation_ids, ...evt.viirs_observation_ids]) {
+              matchedObsIds.add(id);
+              eventIdByObs.set(id, evt.id);
+            }
+          }
+        }
+        for (const obs of mapped) {
+          if (matchedObsIds.has(obs.id)) {
+            obs.isHarmonizedMatch = true;
+            obs.pairedObservationId = eventIdByObs.get(obs.id);
+          }
+        }
+      }
+    } catch {
+      // Harmonization engine query failed or offline; leave observations unlinked
+    }
+
     const isLive = data.is_live;
     const kpis: HotspotKpis = {
       totalHotspots: data.kpis.total_hotspots,
@@ -101,8 +134,8 @@ export async function fetchObservations(
       modisDelta: null,
       viirsCount: data.kpis.viirs_count,
       viirsDelta: null,
-      // Never calculate harmonized matches as an arbitrary percentage; pending Phase 3 cross-sensor engine
-      harmonizedMatches: null,
+      // Phase 3 Cross-Sensor Harmonization: Real matched dual-pass events count (never arbitrary percentage)
+      harmonizedMatches: realHarmonizedMatches,
       harmonizedDelta: null,
       totalFrpGigawatts: Number((data.kpis.total_frp_mw / 1000).toFixed(1)),
       avgConfidence: data.kpis.avg_confidence != null ? Math.round(data.kpis.avg_confidence) : null,
@@ -162,4 +195,45 @@ export async function checkBackendHealth(): Promise<BackendHealthResponse | null
   } catch {
     return null;
   }
+}
+
+export interface FetchHarmonizationParams extends FetchFiresParams {
+  spatial_threshold_km?: number;
+  temporal_threshold_minutes?: number;
+  classification?: string;
+}
+
+export async function fetchHarmonizationEvents(
+  params: FetchHarmonizationParams = {}
+): Promise<HarmonizationResponse> {
+  const query = new URLSearchParams();
+  if (params.source) query.set("source", params.source);
+  if (params.min_lon !== undefined) query.set("min_lon", String(params.min_lon));
+  if (params.min_lat !== undefined) query.set("min_lat", String(params.min_lat));
+  if (params.max_lon !== undefined) query.set("max_lon", String(params.max_lon));
+  if (params.max_lat !== undefined) query.set("max_lat", String(params.max_lat));
+  if (params.day_range) query.set("day_range", String(params.day_range));
+  if (params.date) query.set("date", params.date);
+  if (params.min_frp !== undefined) query.set("min_frp", String(params.min_frp));
+  if (params.spatial_threshold_km !== undefined) {
+    query.set("spatial_threshold_km", String(params.spatial_threshold_km));
+  }
+  if (params.temporal_threshold_minutes !== undefined) {
+    query.set("temporal_threshold_minutes", String(params.temporal_threshold_minutes));
+  }
+  if (params.classification) query.set("classification", params.classification);
+  if (params.demo) query.set("demo", "true");
+
+  const res = await fetch(`${API_BASE_URL}/api/harmonization/events?${query.toString()}`, {
+    method: "GET",
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    const errJson = await res.json().catch(() => ({}));
+    throw new Error(errJson.detail || `Harmonization endpoint returned HTTP ${res.status}`);
+  }
+
+  return await res.json();
 }

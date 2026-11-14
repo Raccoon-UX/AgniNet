@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { DEMO_SENSOR_SPECS } from "@/data/fixtures";
 import {
@@ -9,17 +9,107 @@ import {
   GitMerge,
   Zap,
   Scale,
+  Sliders,
+  RefreshCw,
+  Clock,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
+import { HarmonizedEvent, HarmonizationStats } from "@/types/fire";
+import { fetchHarmonizationEvents } from "@/lib/api";
+import { formatCoordinates, formatFRP } from "@/lib/utils";
 
 export default function SensorComparisonPage() {
   const [selectedSensorId, setSelectedSensorId] = useState<string>("HARMONIZED");
 
+  // Harmonization Engine Live Controls
+  const [spatialThreshold, setSpatialThreshold] = useState<number>(2.0);
+  const [temporalThreshold, setTemporalThreshold] = useState<number>(120.0);
+  const [classificationFilter, setClassificationFilter] = useState<string>("ALL");
+  const [events, setEvents] = useState<HarmonizedEvent[]>([]);
+  const [stats, setStats] = useState<HarmonizationStats | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [isLive, setIsLive] = useState<boolean>(false);
+  const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
+
+  const loadHarmonization = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetchHarmonizationEvents({
+        spatial_threshold_km: spatialThreshold,
+        temporal_threshold_minutes: temporalThreshold,
+        classification: classificationFilter !== "ALL" ? classificationFilter : undefined,
+      });
+      setEvents(res.events);
+      setStats(res.stats);
+      setIsLive(res.is_live);
+    } catch {
+      // Fallback demo query
+      try {
+        const res = await fetchHarmonizationEvents({
+          demo: true,
+          spatial_threshold_km: spatialThreshold,
+          temporal_threshold_minutes: temporalThreshold,
+          classification: classificationFilter !== "ALL" ? classificationFilter : undefined,
+        });
+        setEvents(res.events);
+        setStats(res.stats);
+        setIsLive(false);
+      } catch (err) {
+        console.warn("Harmonization fetch error", err);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [spatialThreshold, temporalThreshold, classificationFilter]);
+
+  useEffect(() => {
+    let ignore = false;
+    async function execute() {
+      try {
+        const res = await fetchHarmonizationEvents({
+          spatial_threshold_km: spatialThreshold,
+          temporal_threshold_minutes: temporalThreshold,
+          classification: classificationFilter !== "ALL" ? classificationFilter : undefined,
+        });
+        if (!ignore) {
+          setEvents(res.events);
+          setStats(res.stats);
+          setIsLive(res.is_live);
+          setLoading(false);
+        }
+      } catch {
+        try {
+          const res = await fetchHarmonizationEvents({
+            demo: true,
+            spatial_threshold_km: spatialThreshold,
+            temporal_threshold_minutes: temporalThreshold,
+            classification: classificationFilter !== "ALL" ? classificationFilter : undefined,
+          });
+          if (!ignore) {
+            setEvents(res.events);
+            setStats(res.stats);
+            setIsLive(false);
+            setLoading(false);
+          }
+        } catch (err) {
+          console.warn("Harmonization fetch error", err);
+          if (!ignore) setLoading(false);
+        }
+      }
+    }
+    execute();
+    return () => {
+      ignore = true;
+    };
+  }, [spatialThreshold, temporalThreshold, classificationFilter]);
+
   return (
     <div className="space-y-6">
       <PageHeader
-        badge="Sensor Harmonization Engine"
-        title="Cross-Sensor Technical Specifications & Harmonization"
-        description="Comprehensive technical analysis comparing NASA EOS MODIS (1km) against JPSS VIIRS (375m) radiometers, and the AgniNet unified cross-calibration framework."
+        badge="Phase 3 Harmonization Engine"
+        title="Cross-Sensor Technical Specifications & Spatial-Temporal Engine"
+        description="Associating NASA EOS MODIS (1km) and JPSS VIIRS (375m) active-fire observations into scientifically defensible unified events with strict radiative energy preservation."
       />
 
       {/* Sensor Selection Cards */}
@@ -69,6 +159,282 @@ export default function SensorComparisonPage() {
             </div>
           );
         })}
+      </div>
+
+      {/* PHASE 3 INTERACTIVE HARMONIZATION ENGINE EXPLORER */}
+      <div className="rounded-xl glass-panel p-6 space-y-5 border border-amber-500/30">
+        <div className="flex flex-col md:flex-row md:items-center justify-between pb-4 border-b border-white/10 gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <GitMerge className="w-5 h-5 text-amber-400" />
+              <h3 className="text-base font-semibold text-white">
+                Live Harmonization Engine & Event Associator
+              </h3>
+            </div>
+            <p className="text-xs text-slate-400 mt-1">
+              Haversine geodesic geometry &bull; Footprint expansion &bull; Non-arbitrary 1-to-many clustering &bull; Un-summed FRP preservation
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className={`text-[11px] font-mono px-2.5 py-1 rounded-md border font-semibold ${
+              isLive
+                ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
+                : "text-amber-300 bg-amber-500/10 border-amber-500/20"
+            }`}>
+              {isLive ? "LIVE TELEMETRY HARMONIZATION" : "DEMO FIXTURES HARMONIZATION"}
+            </span>
+
+            <button
+              onClick={() => loadHarmonization()}
+              disabled={loading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-orange-600 hover:bg-orange-500 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+              Run Harmonization
+            </button>
+          </div>
+        </div>
+
+        {/* Configurable Threshold Sliders & Classification Tabs */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 rounded-lg bg-slate-900/60 border border-white/5">
+          <div className="space-y-1.5">
+            <div className="flex justify-between text-xs">
+              <span className="text-slate-400 flex items-center gap-1">
+                <Sliders className="w-3.5 h-3.5 text-orange-400" />
+                Spatial Radius Threshold
+              </span>
+              <span className="font-mono text-orange-300 font-semibold">{spatialThreshold.toFixed(1)} km</span>
+            </div>
+            <input
+              type="range"
+              min={0.5}
+              max={10.0}
+              step={0.5}
+              value={spatialThreshold}
+              onChange={(e) => setSpatialThreshold(parseFloat(e.target.value))}
+              className="w-full accent-orange-500"
+            />
+            <span className="text-[10px] text-slate-500 block">Accounts for wide-angle scan expansion up to ~4.8 km</span>
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="flex justify-between text-xs">
+              <span className="text-slate-400 flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5 text-cyan-400" />
+                Temporal Coincidence Window
+              </span>
+              <span className="font-mono text-cyan-300 font-semibold">{temporalThreshold} min</span>
+            </div>
+            <input
+              type="range"
+              min={15}
+              max={240}
+              step={15}
+              value={temporalThreshold}
+              onChange={(e) => setTemporalThreshold(parseFloat(e.target.value))}
+              className="w-full accent-cyan-500"
+            />
+            <span className="text-[10px] text-slate-500 block">Matches A-Train Afternoon constellation overpasses (~15-50m)</span>
+          </div>
+
+          <div className="space-y-1.5">
+            <span className="text-slate-400 text-xs block">Event Classification Filter</span>
+            <div className="flex flex-wrap gap-1.5">
+              {(["ALL", "MATCHED", "MODIS_ONLY", "VIIRS_ONLY", "AMBIGUOUS"] as const).map((cls) => (
+                <button
+                  key={cls}
+                  onClick={() => setClassificationFilter(cls)}
+                  className={`px-2 py-1 rounded text-[10px] font-mono font-semibold transition-all cursor-pointer ${
+                    classificationFilter === cls
+                      ? "bg-orange-500 text-white border border-orange-400 shadow-sm shadow-orange-500/20"
+                      : "bg-slate-800 text-slate-300 hover:bg-slate-700 border border-white/5"
+                  }`}
+                >
+                  {cls === "ALL" ? "All" : cls.replace("_", " ")}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Harmonization Statistics Summary */}
+        {stats && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="p-3 rounded-lg bg-slate-900/60 border border-white/5">
+              <span className="text-[10px] uppercase font-mono text-slate-400 block">Total Events</span>
+              <span className="text-xl font-bold font-mono text-white">{stats.total_events}</span>
+            </div>
+            <div className="p-3 rounded-lg bg-slate-900/60 border border-emerald-500/20">
+              <span className="text-[10px] uppercase font-mono text-emerald-400 block">Matched (Dual)</span>
+              <span className="text-xl font-bold font-mono text-emerald-300">{stats.matched_events}</span>
+            </div>
+            <div className="p-3 rounded-lg bg-slate-900/60 border border-purple-500/20">
+              <span className="text-[10px] uppercase font-mono text-purple-400 block">MODIS-Only</span>
+              <span className="text-xl font-bold font-mono text-purple-300">{stats.modis_only_count}</span>
+            </div>
+            <div className="p-3 rounded-lg bg-slate-900/60 border border-cyan-500/20">
+              <span className="text-[10px] uppercase font-mono text-cyan-400 block">VIIRS-Only</span>
+              <span className="text-xl font-bold font-mono text-cyan-300">{stats.viirs_only_count}</span>
+            </div>
+            <div className="p-3 rounded-lg bg-slate-900/60 border border-amber-500/20">
+              <span className="text-[10px] uppercase font-mono text-amber-400 block">Ambiguous</span>
+              <span className="text-xl font-bold font-mono text-amber-300">{stats.ambiguous_count}</span>
+            </div>
+            <div className="p-3 rounded-lg bg-slate-900/60 border border-white/5">
+              <span className="text-[10px] uppercase font-mono text-slate-400 block">Mean Spatial &Delta;</span>
+              <span className="text-xl font-bold font-mono text-slate-200">
+                {stats.mean_spatial_distance_km !== null ? `${stats.mean_spatial_distance_km} km` : "N/A"}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Harmonized Unified Events Table */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between text-xs text-slate-400 px-1">
+            <span>Showing {events.length} unified event association(s)</span>
+            <span className="font-mono text-[11px] text-slate-500">Algorithm: AgniNet-Harmonize-v1.0</span>
+          </div>
+
+          <div className="overflow-x-auto rounded-lg border border-white/5">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="border-b border-white/8 bg-slate-900/80 text-slate-400 uppercase text-[10px] tracking-wider font-semibold">
+                  <th className="py-2.5 px-3">Event ID & Classification</th>
+                  <th className="py-2.5 px-3">Centroid (WGS84)</th>
+                  <th className="py-2.5 px-3">Spacecraft Support</th>
+                  <th className="py-2.5 px-3">MODIS FRP</th>
+                  <th className="py-2.5 px-3">VIIRS Total FRP</th>
+                  <th className="py-2.5 px-3">Distance & Time &Delta;</th>
+                  <th className="py-2.5 px-3">Match Score</th>
+                  <th className="py-2.5 px-3 text-right">Details</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5 text-slate-300">
+                {events.slice(0, 50).map((evt) => {
+                  const isExpanded = expandedEventId === evt.id;
+                  const badgeClass =
+                    evt.classification === "MATCHED"
+                      ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                      : evt.classification === "MODIS_ONLY"
+                      ? "bg-purple-500/15 text-purple-300 border-purple-500/30"
+                      : evt.classification === "VIIRS_ONLY"
+                      ? "bg-cyan-500/15 text-cyan-300 border-cyan-500/30"
+                      : "bg-amber-500/15 text-amber-300 border-amber-500/30";
+
+                  return (
+                    <React.Fragment key={evt.id}>
+                      <tr
+                        onClick={() => setExpandedEventId(isExpanded ? null : evt.id)}
+                        className="hover:bg-slate-800/40 transition-colors cursor-pointer group"
+                      >
+                        <td className="py-3 px-3">
+                          <div className="font-mono text-xs font-semibold text-slate-200">
+                            {evt.id}
+                          </div>
+                          <span className={`inline-block px-1.5 py-0.2 mt-1 rounded text-[9px] font-mono font-bold border ${badgeClass}`}>
+                            {evt.classification.replace("_", " ")}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 font-mono text-[11px] text-slate-300">
+                          {formatCoordinates(evt.latitude, evt.longitude)}
+                        </td>
+                        <td className="py-3 px-3">
+                          <div className="text-[11px] font-medium text-slate-200">
+                            {[...evt.modis_satellites, ...evt.viirs_satellites].join(", ") || "Unassigned"}
+                          </div>
+                          <div className="text-[10px] font-mono text-slate-400 mt-0.5">
+                            {evt.modis_observation_ids.length} MODIS &bull; {evt.viirs_observation_ids.length} VIIRS
+                          </div>
+                        </td>
+                        <td className="py-3 px-3 font-mono text-purple-300 text-[11px]">
+                          {formatFRP(evt.modis_frp_mw)}
+                        </td>
+                        <td className="py-3 px-3 font-mono text-cyan-300 text-[11px]">
+                          {formatFRP(evt.viirs_total_frp_mw)}
+                        </td>
+                        <td className="py-3 px-3 font-mono text-[11px] text-slate-400">
+                          {evt.spatial_distance_km !== null ? `${evt.spatial_distance_km} km` : "—"} &bull;{" "}
+                          {evt.temporal_difference_minutes !== null ? `${evt.temporal_difference_minutes}m` : "—"}
+                        </td>
+                        <td className="py-3 px-3">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-12 bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                              <div
+                                className={`h-full ${
+                                  evt.match_score >= 0.75
+                                    ? "bg-emerald-400"
+                                    : evt.match_score > 0.4
+                                    ? "bg-amber-400"
+                                    : "bg-slate-600"
+                                }`}
+                                style={{ width: `${Math.round(evt.match_score * 100)}%` }}
+                              />
+                            </div>
+                            <span className="font-mono text-[11px] font-bold text-slate-200">
+                              {Math.round(evt.match_score * 100)}%
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-3 text-right">
+                          <button className="text-slate-400 hover:text-white p-1 cursor-pointer">
+                            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                          </button>
+                        </td>
+                      </tr>
+
+                      {isExpanded && (
+                        <tr className="bg-slate-900/90 border-b border-white/10">
+                          <td colSpan={8} className="p-4 space-y-3">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                              <div className="p-3 rounded-lg bg-slate-950/80 border border-white/5 space-y-1.5">
+                                <span className="text-[10px] uppercase font-mono text-slate-400 font-semibold block">
+                                  Scientific Evidence Trail
+                                </span>
+                                <p className="text-slate-300 leading-relaxed font-sans text-xs">
+                                  {evt.evidence_notes}
+                                </p>
+                                <div className="text-[10px] text-slate-500 font-mono pt-1">
+                                  Acquisition Window: {evt.earliest_acq_utc ?? "—"} to {evt.latest_acq_utc ?? "—"} UTC
+                                </div>
+                              </div>
+
+                              <div className="p-3 rounded-lg bg-slate-950/80 border border-white/5 space-y-1.5">
+                                <span className="text-[10px] uppercase font-mono text-slate-400 font-semibold block">
+                                  Telemetry & Sub-Pixel Measurements (Preserved Separately)
+                                </span>
+                                <div className="grid grid-cols-2 gap-2 text-xs">
+                                  <div>
+                                    <span className="text-slate-500 text-[10px] block">MODIS FRP (1km)</span>
+                                    <span className="font-mono font-bold text-purple-300">
+                                      {formatFRP(evt.modis_frp_mw)}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span className="text-slate-500 text-[10px] block">VIIRS Total Sub-Pixel FRP</span>
+                                    <span className="font-mono font-bold text-cyan-300">
+                                      {formatFRP(evt.viirs_total_frp_mw)}
+                                    </span>
+                                  </div>
+                                </div>
+                                {evt.viirs_individual_frps.length > 0 && (
+                                  <div className="text-[10px] text-slate-400 font-mono pt-1">
+                                    VIIRS Sub-pixels: [{evt.viirs_individual_frps.map((f) => `${f.toFixed(1)} MW`).join(", ")}]
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
       {/* Side-by-Side Comparison Matrix Table */}
@@ -143,7 +509,7 @@ export default function SensorComparisonPage() {
         <div className="flex items-center gap-2">
           <Zap className="w-5 h-5 text-amber-400" />
           <h3 className="text-base font-semibold text-white">
-            The AgniNet Harmonization Architecture (Phase 1 Methodology)
+            The AgniNet Harmonization Architecture (Phase 3 Spatial-Temporal Engine)
           </h3>
         </div>
         <p className="text-xs text-slate-300 leading-relaxed max-w-4xl">
@@ -155,31 +521,31 @@ export default function SensorComparisonPage() {
             <span className="font-mono text-xs font-bold text-orange-400 block">01 / DEDUPLICATION</span>
             <h5 className="font-semibold text-xs text-slate-200">Spatial-Temporal Clustering</h5>
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              Groups overlapping pixels acquired within a 45-minute satellite pass window using a density-based spatial cluster algorithm (DBSCAN).
+              Groups overlapping pixels acquired within a satellite pass synchronization window using geodesic Haversine distance and dynamic scan angle expansion.
             </p>
           </div>
 
           <div className="p-4 rounded-lg bg-slate-900/80 border border-white/5 space-y-2">
-            <span className="font-mono text-xs font-bold text-cyan-400 block">02 / RADIANCE FUSION</span>
-            <h5 className="font-semibold text-xs text-slate-200">FRP Cross-Calibration</h5>
+            <span className="font-mono text-xs font-bold text-cyan-400 block">02 / RADIANCE PRESERVATION</span>
+            <h5 className="font-semibold text-xs text-slate-200">Individual Instrument Radiance</h5>
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              Harmonizes sensor-specific Point Spread Functions (PSF) and scan angle effects to ensure Fire Radiative Power (MW) energy parity.
+              Preserves MODIS and VIIRS FRP values independently without unscientific cross-sensor summation, respecting sensor-specific PSF differences.
             </p>
           </div>
 
           <div className="p-4 rounded-lg bg-slate-900/80 border border-white/5 space-y-2">
-            <span className="font-mono text-xs font-bold text-amber-400 block">03 / FILTERING</span>
-            <h5 className="font-semibold text-xs text-slate-200">Static Anomaly Rejection</h5>
+            <span className="font-mono text-xs font-bold text-amber-400 block">03 / AMBIGUITY RESOLUTION</span>
+            <h5 className="font-semibold text-xs text-slate-200">Non-Arbitrary Classification</h5>
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              Cross-references global thermal database masks to weed out industrial flares, gas flaring sites, metal refineries, and active volcanoes.
+              Explicitly categorizes complex fire complexes into MATCHED, MODIS_ONLY, VIIRS_ONLY, and AMBIGUOUS rather than forcing random one-to-one pairings.
             </p>
           </div>
 
           <div className="p-4 rounded-lg bg-slate-900/80 border border-white/5 space-y-2">
             <span className="font-mono text-xs font-bold text-emerald-400 block">04 / COMPOSITING</span>
-            <h5 className="font-semibold text-xs text-slate-200">Unified Confidence Scoring</h5>
+            <h5 className="font-semibold text-xs text-slate-200">Deterministic Event Scoring</h5>
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              Computes a single Bayesian confidence score combining multi-sensor agreement, atmospheric optical depth, and background solar glint.
+              Generates deterministic event hashes and proximity-weighted match confidence scores (0-100%) grounded in empirical overpass times.
             </p>
           </div>
         </div>

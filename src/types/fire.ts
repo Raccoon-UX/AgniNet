@@ -175,3 +175,50 @@ export interface BackendHealthResponse {
   upstream_firms_endpoint: string;
   message: string;
 }
+
+export type MatchClassification = "MATCHED" | "MODIS_ONLY" | "VIIRS_ONLY" | "AMBIGUOUS";
+
+export interface HarmonizedEvent {
+  id: string;
+  classification: MatchClassification;
+  latitude: number;
+  longitude: number;
+  acquisition_date: string;
+  earliest_acq_utc?: string | null;
+  latest_acq_utc?: string | null;
+  modis_observation_ids: string[];
+  viirs_observation_ids: string[];
+  modis_satellites: string[];
+  viirs_satellites: string[];
+  modis_frp_mw?: number | null;
+  viirs_total_frp_mw?: number | null;
+  viirs_individual_frps: number[];
+  spatial_distance_km?: number | null;
+  temporal_difference_minutes?: number | null;
+  match_score: number;
+  evidence_notes: string;
+  algorithm_version: string;
+}
+
+export interface HarmonizationStats {
+  total_events: number;
+  matched_events: number;
+  modis_only_count: number;
+  viirs_only_count: number;
+  ambiguous_count: number;
+  spatial_threshold_km: number;
+  temporal_threshold_minutes: number;
+  mean_spatial_distance_km?: number | null;
+  mean_temporal_difference_minutes?: number | null;
+  average_match_score?: number | null;
+}
+
+export interface HarmonizationResponse {
+  events: HarmonizedEvent[];
+  stats: HarmonizationStats;
+  is_live: boolean;
+  data_source: "NASA_FIRMS_LIVE" | "DEMO_FIXTURES";
+  fetched_at: string;
+  algorithm_version: string;
+  applied_thresholds?: Record<string, unknown>;
+}
