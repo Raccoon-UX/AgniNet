@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-from app.routers import fires, health, sensors, harmonization
+from app.routers import fires, health, sensors, harmonization, history
 
 app = FastAPI(
     title=settings.app_name,
@@ -25,6 +25,7 @@ app.include_router(health.router)
 app.include_router(sensors.router)
 app.include_router(fires.router)
 app.include_router(harmonization.router)
+app.include_router(history.router)
 
 
 @app.get("/", tags=["Root"])
@@ -43,5 +44,11 @@ async def root():
             "harmonized_events": "/api/harmonization/events",
             "harmonization_stats": "/api/harmonization/stats",
             "harmonization_partitions": "/api/harmonization/observations",
+            "history_summary": "/api/history/summary",
+            "history_trends": "/api/history/trends",
+            "history_calendar": "/api/history/calendar",
+            "history_regions": "/api/history/regions",
+            "history_sensors": "/api/history/sensors",
+            "history_events": "/api/history/events",
         },
     }

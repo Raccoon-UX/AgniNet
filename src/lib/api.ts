@@ -3,6 +3,12 @@ import {
   BackendHealthResponse,
   BackendObservation,
   HarmonizationResponse,
+  HistoricalCalendarResponse,
+  HistoricalEventsResponse,
+  HistoricalRegionsResponse,
+  HistoricalSensorsResponse,
+  HistoricalSummary,
+  HistoricalTrendsResponse,
   HotspotKpis,
   HotspotObservation,
 } from "@/types/fire";
@@ -235,5 +241,141 @@ export async function fetchHarmonizationEvents(
     throw new Error(errJson.detail || `Harmonization endpoint returned HTTP ${res.status}`);
   }
 
+  return await res.json();
+}
+
+// ==========================================
+// Phase 4 Historical Analytics API Fetchers
+// ==========================================
+
+export interface FetchHistoricalParams {
+  start_date?: string;
+  end_date?: string;
+  min_lon?: number;
+  min_lat?: number;
+  max_lon?: number;
+  max_lat?: number;
+  instrument?: string;
+  satellite?: string;
+  region?: string;
+  min_frp?: number;
+  granularity?: "day" | "week" | "month";
+  classification?: string;
+  page?: number;
+  page_size?: number;
+}
+
+function buildHistoricalQuery(params: FetchHistoricalParams): URLSearchParams {
+  const query = new URLSearchParams();
+  if (params.start_date) query.set("start_date", params.start_date);
+  if (params.end_date) query.set("end_date", params.end_date);
+  if (params.min_lon !== undefined) query.set("min_lon", String(params.min_lon));
+  if (params.min_lat !== undefined) query.set("min_lat", String(params.min_lat));
+  if (params.max_lon !== undefined) query.set("max_lon", String(params.max_lon));
+  if (params.max_lat !== undefined) query.set("max_lat", String(params.max_lat));
+  if (params.instrument) query.set("instrument", params.instrument);
+  if (params.satellite) query.set("satellite", params.satellite);
+  if (params.region) query.set("region", params.region);
+  if (params.min_frp !== undefined) query.set("min_frp", String(params.min_frp));
+  if (params.granularity) query.set("granularity", params.granularity);
+  if (params.classification) query.set("classification", params.classification);
+  if (params.page !== undefined) query.set("page", String(params.page));
+  if (params.page_size !== undefined) query.set("page_size", String(params.page_size));
+  return query;
+}
+
+export async function fetchHistoricalSummary(
+  params: FetchHistoricalParams = {}
+): Promise<HistoricalSummary> {
+  const query = buildHistoricalQuery(params);
+  const res = await fetch(`${API_BASE_URL}/api/history/summary?${query.toString()}`, {
+    method: "GET",
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const errJson = await res.json().catch(() => ({}));
+    throw new Error(errJson.detail || `Historical summary endpoint returned HTTP ${res.status}`);
+  }
+  return await res.json();
+}
+
+export async function fetchHistoricalTrends(
+  params: FetchHistoricalParams = {}
+): Promise<HistoricalTrendsResponse> {
+  const query = buildHistoricalQuery(params);
+  const res = await fetch(`${API_BASE_URL}/api/history/trends?${query.toString()}`, {
+    method: "GET",
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const errJson = await res.json().catch(() => ({}));
+    throw new Error(errJson.detail || `Historical trends endpoint returned HTTP ${res.status}`);
+  }
+  return await res.json();
+}
+
+export async function fetchHistoricalCalendar(
+  params: FetchHistoricalParams = {}
+): Promise<HistoricalCalendarResponse> {
+  const query = buildHistoricalQuery(params);
+  const res = await fetch(`${API_BASE_URL}/api/history/calendar?${query.toString()}`, {
+    method: "GET",
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const errJson = await res.json().catch(() => ({}));
+    throw new Error(errJson.detail || `Historical calendar endpoint returned HTTP ${res.status}`);
+  }
+  return await res.json();
+}
+
+export async function fetchHistoricalRegions(
+  params: FetchHistoricalParams = {}
+): Promise<HistoricalRegionsResponse> {
+  const query = buildHistoricalQuery(params);
+  const res = await fetch(`${API_BASE_URL}/api/history/regions?${query.toString()}`, {
+    method: "GET",
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const errJson = await res.json().catch(() => ({}));
+    throw new Error(errJson.detail || `Historical regions endpoint returned HTTP ${res.status}`);
+  }
+  return await res.json();
+}
+
+export async function fetchHistoricalSensors(
+  params: FetchHistoricalParams = {}
+): Promise<HistoricalSensorsResponse> {
+  const query = buildHistoricalQuery(params);
+  const res = await fetch(`${API_BASE_URL}/api/history/sensors?${query.toString()}`, {
+    method: "GET",
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const errJson = await res.json().catch(() => ({}));
+    throw new Error(errJson.detail || `Historical sensors endpoint returned HTTP ${res.status}`);
+  }
+  return await res.json();
+}
+
+export async function fetchHistoricalEvents(
+  params: FetchHistoricalParams = {}
+): Promise<HistoricalEventsResponse> {
+  const query = buildHistoricalQuery(params);
+  const res = await fetch(`${API_BASE_URL}/api/history/events?${query.toString()}`, {
+    method: "GET",
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const errJson = await res.json().catch(() => ({}));
+    throw new Error(errJson.detail || `Historical events endpoint returned HTTP ${res.status}`);
+  }
   return await res.json();
 }

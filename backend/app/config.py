@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     # Limit maximum records returned per query to avoid browser overload
     max_records_per_response: int = 2500
 
+    # Historical Database Storage (SQLite persistent store)
+    database_path: str = Field(default="backend/data/agninet_historical.db", alias="DATABASE_PATH")
+
     model_config = SettingsConfigDict(
         env_file=(".env", "../.env", "backend/.env"),
         env_file_encoding="utf-8",

@@ -30,6 +30,13 @@ next-env.d.ts
 # Testing & Coverage
 /coverage
 
+# Database & Runtime Data
+*.db
+*.sqlite
+*.sqlite3
+backend/data/*.db
+backend/data/*.sqlite
+
 # Environment & Secrets (NEVER COMMIT SECRETS)
 .env
 .env*.local

@@ -225,3 +225,132 @@ export interface HarmonizationResponse {
   algorithm_version: string;
   applied_thresholds?: Record<string, unknown>;
 }
+
+// ==========================================
+// Phase 4 Historical Fire Intelligence Types
+// ==========================================
+
+export interface HistoricalSummary {
+  total_events: number;
+  total_observations: number;
+  matched_events: number;
+  modis_only_events: number;
+  viirs_only_events: number;
+  ambiguous_events: number;
+  modis_frp_gigawatts: number;
+  viirs_frp_gigawatts: number;
+  average_match_score?: number | null;
+  peak_day?: string | null;
+  peak_day_events: number;
+  date_range_start: string;
+  date_range_end: string;
+  active_platforms: string[];
+  data_source: string;
+  is_live: boolean;
+  provenance: string;
+}
+
+export interface HistoricalTrendPoint {
+  date_bucket: string;
+  event_count: number;
+  observation_count: number;
+  matched_count: number;
+  modis_only_count: number;
+  viirs_only_count: number;
+  ambiguous_count: number;
+  modis_frp_mw: number;
+  viirs_frp_mw: number;
+  average_confidence?: number | null;
+}
+
+export interface HistoricalTrendsResponse {
+  granularity: "day" | "week" | "month";
+  total_buckets: number;
+  trends: HistoricalTrendPoint[];
+  data_source: string;
+  is_live: boolean;
+  provenance: string;
+  fetched_at: string;
+}
+
+export interface HistoricalCalendarDay {
+  date: string;
+  event_count: number;
+  observation_count: number;
+  intensity_index: number;
+  dominant_sensor: string;
+  modis_count: number;
+  viirs_count: number;
+  modis_frp_mw: number;
+  viirs_frp_mw: number;
+  peak_frp_mw: number;
+}
+
+export interface HistoricalCalendarResponse {
+  days: HistoricalCalendarDay[];
+  total_days: number;
+  max_daily_events: number;
+  max_daily_frp_mw: number;
+  date_range_start: string;
+  date_range_end: string;
+  data_source: string;
+  is_live: boolean;
+  provenance: string;
+  fetched_at: string;
+}
+
+export interface HistoricalRegionStat {
+  region_name: string;
+  event_count: number;
+  observation_count: number;
+  matched_count: number;
+  modis_frp_mw: number;
+  viirs_frp_mw: number;
+  percentage_of_total: number;
+}
+
+export interface HistoricalRegionsResponse {
+  regions: HistoricalRegionStat[];
+  total_events: number;
+  data_source: string;
+  is_live: boolean;
+  provenance: string;
+  fetched_at: string;
+}
+
+export interface HistoricalSensorStat {
+  satellite: string;
+  instrument: string;
+  sensor_source: string;
+  observation_count: number;
+  share_percentage: number;
+  daytime_count: number;
+  nighttime_count: number;
+  total_frp_mw: number;
+  mean_frp_mw?: number | null;
+  max_frp_mw?: number | null;
+  average_confidence?: number | null;
+}
+
+export interface HistoricalSensorsResponse {
+  sensors: HistoricalSensorStat[];
+  total_observations: number;
+  modis_observation_count: number;
+  viirs_observation_count: number;
+  data_source: string;
+  is_live: boolean;
+  provenance: string;
+  fetched_at: string;
+}
+
+export interface HistoricalEventsResponse {
+  events: HarmonizedEvent[];
+  total_events: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  data_source: string;
+  is_live: boolean;
+  provenance: string;
+  fetched_at: string;
+}
