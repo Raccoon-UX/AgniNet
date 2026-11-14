@@ -1,7 +1,7 @@
 import csv
 import io
 import math
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple, Union
 from app.models.fire import NormalizedObservation, ObservationKpis
 
 
@@ -15,11 +15,16 @@ def _safe_float(val: Any) -> Optional[float]:
         return None
 
 
-def _format_acq_time(raw_time: Any) -> str:
-    """Formats 3 or 4-digit acquisition times e.g. '345' -> '03:45', '1420' -> '14:20'."""
+def _format_acq_time(raw_time: Any) -> Optional[str]:
+    """
+    Formats 3 or 4-digit acquisition times e.g. '345' -> '03:45', '1420' -> '14:20'.
+    Returns None if missing or empty — NEVER assigns fabricated '00:00'.
+    """
     if raw_time is None:
-        return "00:00"
+        return None
     s = str(raw_time).strip().replace(":", "")
+    if not s or s.lower() in {"none", "null", "nan"}:
+        return None
     if len(s) == 3:
         return f"0{s[0]}:{s[1:]}"
     elif len(s) >= 4:
@@ -28,11 +33,11 @@ def _format_acq_time(raw_time: Any) -> str:
         return f"00:{s}"
     elif len(s) == 1:
         return f"00:0{s}"
-    return "00:00"
+    return None
 
 
-def _normalize_satellite_name(sat: str, instrument: str) -> str:
-    s = str(sat).strip().upper()
+def _normalize_satellite_name(sat: Any, source_id: str, instrument: str) -> str:
+    s = str(sat).strip().upper() if sat is not None else ""
     if s in {"T", "TERRA"}:
         return "Terra"
     if s in {"A", "AQUA"}:
@@ -43,64 +48,89 @@ def _normalize_satellite_name(sat: str, instrument: str) -> str:
         return "NOAA-20"
     if s in {"2", "NOAA-21", "JPSS-2", "NOAA21", "N21"}:
         return "NOAA-21"
-    
-    # Fallback to instrument hints
-    if instrument == "MODIS":
+
+    # Contextual resolution from official FIRMS source_id
+    src_upper = source_id.upper()
+    if "NOAA20" in src_upper:
+        return "NOAA-20"
+    if "NOAA21" in src_upper:
+        return "NOAA-21"
+    if "SNPP" in src_upper:
+        return "Suomi-NPP"
+    if "MODIS" in src_upper:
         return "Terra / Aqua"
-    if instrument == "VIIRS":
-        return "JPSS Constellation"
-    return str(sat).strip() or "EOS / JPSS"
+
+    return str(sat).strip() if sat else ("Terra / Aqua" if instrument == "MODIS" else "JPSS Constellation")
 
 
 def _parse_confidence(conf_raw: Any, instrument: str) -> Tuple[Optional[Union[float, int, str]], Optional[float]]:
-    """Returns (confidence_display, confidence_numeric_0_to_100)."""
-    if conf_raw is None or str(conf_raw).strip() == "":
+    """
+    Returns (raw_confidence_display, confidence_numeric_0_to_100).
+    Returns (None, None) if missing or unparseable — NEVER assigns a fabricated default.
+    """
+    if conf_raw is None:
         return None, None
-    
     s = str(conf_raw).strip().lower()
-    
-    # Try numeric float
+    if not s or s in {"none", "null", "nan", ""}:
+        return None, None
+
+    # Try numeric float/int
     try:
         num = float(s)
-        return int(num) if num.is_integer() else num, max(0.0, min(100.0, num))
+        return (int(num) if num.is_integer() else num, max(0.0, min(100.0, num)))
     except ValueError:
         pass
-    
-    # VIIRS categorical mapping: 'l', 'n', 'h'
+
+    # VIIRS standard categorical mapping
     if s in {"l", "low"}:
         return "low", 25.0
     if s in {"n", "nominal", "nom"}:
         return "nominal", 65.0
     if s in {"h", "high"}:
         return "high", 90.0
-        
+
     return conf_raw, None
 
 
 def parse_firms_csv(csv_text: str, source_id: str) -> List[NormalizedObservation]:
     """
     Parses raw NASA FIRMS CSV text into validated NormalizedObservation instances.
-    Deduplicates records based on deterministic coordinates and acquisition timestamps.
+    Safely rejects malformed records lacking essential geospatial/temporal coordinates.
+    Never fabricates missing acquisition dates, times, or confidence metrics.
     """
     if not csv_text or not csv_text.strip():
+        return []
+
+    # Content pre-validation: reject HTML, XML, or explicit error payloads
+    stripped = csv_text.strip()
+    if stripped.startswith("<!DOCTYPE") or stripped.startswith("<html") or "<title>Error" in stripped:
+        return []
+    if "Invalid API call" in stripped or "Invalid MAP_KEY" in stripped:
         return []
 
     observations: List[NormalizedObservation] = []
     seen_ids = set()
 
-    # Determine instrument category
     is_modis = "MODIS" in source_id.upper()
     instrument = "MODIS" if is_modis else "VIIRS"
 
-    reader = csv.DictReader(io.StringIO(csv_text.strip()))
+    try:
+        reader = csv.DictReader(io.StringIO(stripped))
+    except Exception:
+        return []
+
     if not reader.fieldnames:
         return []
 
     # Map column headers case-insensitively
     headers = {k.strip().lower(): k for k in reader.fieldnames if k}
 
+    # Verify essential coordinate headers exist
+    if "latitude" not in headers or "longitude" not in headers:
+        return []
+
     for row in reader:
-        # Latitude & Longitude are mandatory
+        # 1. Latitude & Longitude validation
         lat_val = _safe_float(row.get(headers.get("latitude", "latitude")))
         lon_val = _safe_float(row.get(headers.get("longitude", "longitude")))
 
@@ -109,19 +139,26 @@ def parse_firms_csv(csv_text: str, source_id: str) -> List[NormalizedObservation
         if lat_val < -90.0 or lat_val > 90.0 or lon_val < -180.0 or lon_val > 180.0:
             continue
 
-        acq_date = str(row.get(headers.get("acq_date", "acq_date"), "")).strip() or "2026-01-01"
+        # 2. Acquisition Date validation — reject records with missing dates
+        acq_date_raw = row.get(headers.get("acq_date", "acq_date"))
+        if not acq_date_raw or not str(acq_date_raw).strip():
+            continue
+        acq_date = str(acq_date_raw).strip()
+        if acq_date.lower() in {"none", "null", "nan"}:
+            continue
+
+        # 3. Acquisition Time formatting — preserve null if missing (no fake 00:00)
         raw_acq_time = row.get(headers.get("acq_time", "acq_time"))
         acq_time_fmt = _format_acq_time(raw_acq_time)
 
-        # Build deterministic unique ID to deduplicate within the feed
-        record_id = f"{source_id}_{lat_val:.4f}_{lon_val:.4f}_{acq_date}_{acq_time_fmt.replace(':', '')}"
+        # 4. Deterministic record ID to prevent duplicates within the feed
+        time_token = acq_time_fmt.replace(":", "") if acq_time_fmt else "notime"
+        record_id = f"{source_id}_{lat_val:.4f}_{lon_val:.4f}_{acq_date}_{time_token}"
         if record_id in seen_ids:
             continue
         seen_ids.add(record_id)
 
-        # Thermal channels:
-        # MODIS: 'brightness' (T21/T22) & 'bright_t31' (T31)
-        # VIIRS: 'bright_ti4' (I4) & 'bright_ti5' (I5)
+        # 5. Thermal channels (preserve missing as None)
         bright_val = (
             _safe_float(row.get(headers.get("bright_ti4", "")))
             if "bright_ti4" in headers
@@ -137,15 +174,15 @@ def parse_firms_csv(csv_text: str, source_id: str) -> List[NormalizedObservation
         scan_val = _safe_float(row.get(headers.get("scan", "")))
         track_val = _safe_float(row.get(headers.get("track", "")))
 
-        # Confidence
+        # 6. Confidence — never fabricated
         conf_raw = row.get(headers.get("confidence", ""))
         conf_display, conf_numeric = _parse_confidence(conf_raw, instrument)
 
-        # Satellite
+        # 7. Satellite Platform resolution
         sat_raw = row.get(headers.get("satellite", ""))
-        satellite = _normalize_satellite_name(sat_raw or "", instrument)
+        satellite = _normalize_satellite_name(sat_raw, source_id, instrument)
 
-        # Day/Night
+        # 8. Day/Night indicator
         dn_val = row.get(headers.get("daynight", ""))
         dn_clean: Optional[str] = None
         if dn_val:
@@ -153,7 +190,7 @@ def parse_firms_csv(csv_text: str, source_id: str) -> List[NormalizedObservation
             if dn_first in {"D", "N"}:
                 dn_clean = dn_first
 
-        # Version
+        # 9. Processing version
         version_val = row.get(headers.get("version", ""))
 
         obs = NormalizedObservation(
@@ -206,6 +243,7 @@ def compute_kpis(observations: List[NormalizedObservation]) -> ObservationKpis:
     total_frp = sum(frp_vals)
     max_frp = max(frp_vals) if frp_vals else None
 
+    # Only average over observations that genuinely possess a numeric confidence
     conf_vals = [o.confidence_numeric for o in observations if o.confidence_numeric is not None]
     avg_conf = (sum(conf_vals) / len(conf_vals)) if conf_vals else None
 

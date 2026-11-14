@@ -1,5 +1,5 @@
 from typing import Any, Dict, List, Literal, Optional, Union
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 
 class NormalizedObservation(BaseModel):
@@ -11,17 +11,20 @@ class NormalizedObservation(BaseModel):
     latitude: float = Field(ge=-90.0, le=90.0)
     longitude: float = Field(ge=-180.0, le=180.0)
     acquisition_date: str = Field(description="Date string formatted as YYYY-MM-DD")
-    acquisition_time_utc: str = Field(description="Acquisition time formatted as HH:MM")
+    acquisition_time_utc: Optional[str] = Field(
+        default=None,
+        description="Acquisition time formatted as HH:MM (null if missing from telemetry)"
+    )
     satellite: str = Field(description="Platform (Terra, Aqua, Suomi-NPP, NOAA-20, NOAA-21, etc.)")
     instrument: Literal["MODIS", "VIIRS", "OTHER"]
     sensor_source: str = Field(description="FIRMS source identifier e.g. MODIS_NRT, VIIRS_SNPP_NRT")
     confidence: Optional[Union[float, int, str]] = Field(
         default=None,
-        description="Confidence value: 0-100% for MODIS; 'low', 'nominal', 'high' or numeric for VIIRS"
+        description="Raw confidence value: 0-100% for MODIS; 'low', 'nominal', 'high' or numeric for VIIRS"
     )
     confidence_numeric: Optional[float] = Field(
         default=None,
-        description="Standardized 0-100 numeric confidence if available or mapped (low=25, nominal=65, high=90)"
+        description="Standardized 0-100 numeric confidence if available (null if missing, never fabricated)"
     )
     frp_mw: Optional[float] = Field(
         default=None,
@@ -59,6 +62,16 @@ class ObservationKpis(BaseModel):
 class FireObservationsResponse(BaseModel):
     is_live: bool = Field(description="True if data was fetched live from NASA FIRMS API")
     data_source: Literal["NASA_FIRMS_LIVE", "DEMO_FIXTURES"]
+    status: Literal["healthy", "degraded", "demo_fallback"] = Field(
+        default="healthy",
+        description="Feed health status: 'healthy', 'degraded' (partial failure), or 'demo_fallback'"
+    )
+    is_partial: bool = Field(
+        default=False,
+        description="True if one or more requested sensor feeds failed while others succeeded"
+    )
+    succeeded_sources: List[str] = Field(default_factory=list)
+    failed_sources: List[str] = Field(default_factory=list)
     fetched_at: str
     total_count: int
     observations: List[NormalizedObservation]

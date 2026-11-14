@@ -58,7 +58,7 @@ export const KpiCards: React.FC<KpiCardsProps> = ({ kpis, isLive = false }) => {
             <span className="text-3xl font-bold tracking-tight text-white font-mono">
               {kpis.totalHotspots.toLocaleString()}
             </span>
-            {kpis.totalHotspotsDelta && (
+            {kpis.totalHotspotsDelta != null && (
               <span className="inline-flex items-center text-xs font-semibold text-orange-400">
                 <ArrowUpRight className="w-3.5 h-3.5" />
                 +{kpis.totalHotspotsDelta}%
@@ -95,7 +95,7 @@ export const KpiCards: React.FC<KpiCardsProps> = ({ kpis, isLive = false }) => {
             <span className="text-3xl font-bold tracking-tight text-white font-mono">
               {kpis.modisCount.toLocaleString()}
             </span>
-            {kpis.modisDelta && (
+            {kpis.modisDelta != null && (
               <span className="inline-flex items-center text-xs font-semibold text-purple-400">
                 <TrendingUp className="w-3.5 h-3.5 mr-0.5" />
                 +{kpis.modisDelta}%
@@ -132,7 +132,7 @@ export const KpiCards: React.FC<KpiCardsProps> = ({ kpis, isLive = false }) => {
             <span className="text-3xl font-bold tracking-tight text-white font-mono">
               {kpis.viirsCount.toLocaleString()}
             </span>
-            {kpis.viirsDelta && (
+            {kpis.viirsDelta != null && (
               <span className="inline-flex items-center text-xs font-semibold text-cyan-400">
                 <ArrowUpRight className="w-3.5 h-3.5" />
                 +{kpis.viirsDelta}%
@@ -167,17 +167,31 @@ export const KpiCards: React.FC<KpiCardsProps> = ({ kpis, isLive = false }) => {
 
           <div className="mt-4 flex items-baseline gap-2">
             <span className="text-3xl font-bold tracking-tight text-white font-mono">
-              {kpis.avgConfidence}%
+              {kpis.avgConfidence != null ? `${kpis.avgConfidence}%` : "N/A"}
             </span>
-            <span className="inline-flex items-center text-xs font-semibold text-emerald-400">
-              Reliable
+            <span
+              className={`inline-flex items-center text-xs font-semibold ${
+                kpis.avgConfidence != null && kpis.avgConfidence >= 80
+                  ? "text-emerald-400"
+                  : kpis.avgConfidence != null && kpis.avgConfidence >= 50
+                  ? "text-amber-400"
+                  : "text-slate-400"
+              }`}
+            >
+              {kpis.avgConfidence != null
+                ? kpis.avgConfidence >= 80
+                  ? "High Conf"
+                  : "Nominal"
+                : "Unrated"}
             </span>
           </div>
 
           <div className="mt-3 flex items-center justify-between text-xs text-slate-400 pt-3 border-t border-white/5">
             <span className="text-[11px]">Harmonized Dual-Pass</span>
             <span className="font-mono text-amber-300 text-[11px] font-semibold">
-              {kpis.harmonizedMatches.toLocaleString()} Clusters
+              {kpis.harmonizedMatches != null
+                ? `${kpis.harmonizedMatches.toLocaleString()} Clusters`
+                : "Pending Phase 3"}
             </span>
           </div>
         </div>

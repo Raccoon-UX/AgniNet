@@ -76,14 +76,14 @@ export const HotspotTable: React.FC<HotspotTableProps> = ({
       .sort((a, b) => {
         const valA = a[sortField];
         const valB = b[sortField];
-        if (typeof valA === "string") {
+        if (typeof valA === "string" || typeof valB === "string") {
           return sortAsc
-            ? (valA as string).localeCompare(valB as string)
-            : (valB as string).localeCompare(valA as string);
+            ? String(valA ?? "").localeCompare(String(valB ?? ""))
+            : String(valB ?? "").localeCompare(String(valA ?? ""));
         }
-        return sortAsc
-          ? (valA as number) - (valB as number)
-          : (valB as number) - (valA as number);
+        const numA = typeof valA === "number" ? valA : -1;
+        const numB = typeof valB === "number" ? valB : -1;
+        return sortAsc ? numA - numB : numB - numA;
       });
   }, [hotspots, sensorFilter, searchTerm, sortField, sortAsc]);
 
@@ -246,7 +246,7 @@ export const HotspotTable: React.FC<HotspotTableProps> = ({
                         {hotspot.id}
                       </div>
                       <div className="text-[11px] text-slate-500 font-mono mt-0.5">
-                        {hotspot.acquisitionDate} &bull; {hotspot.acquisitionTimeUtc} UTC
+                        {hotspot.acquisitionDate} &bull; {hotspot.acquisitionTimeUtc ? `${hotspot.acquisitionTimeUtc} UTC` : "Time Unspecified"}
                       </div>
                     </td>
 
@@ -296,23 +296,29 @@ export const HotspotTable: React.FC<HotspotTableProps> = ({
 
                     {/* Confidence */}
                     <td className="py-3 px-4">
-                      <div className="flex items-center gap-2">
-                        <div className="w-16 bg-slate-800 rounded-full h-1.5 overflow-hidden">
-                          <div
-                            className={`h-full ${
-                              hotspot.confidence >= 90
-                                ? "bg-emerald-400"
-                                : hotspot.confidence >= 75
-                                ? "bg-amber-400"
-                                : "bg-yellow-400"
-                            }`}
-                            style={{ width: `${hotspot.confidence}%` }}
-                          />
+                      {hotspot.confidence != null ? (
+                        <div className="flex items-center gap-2">
+                          <div className="w-16 bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                            <div
+                              className={`h-full ${
+                                hotspot.confidence >= 80
+                                  ? "bg-emerald-400"
+                                  : hotspot.confidence >= 50
+                                  ? "bg-amber-400"
+                                  : "bg-yellow-400"
+                              }`}
+                              style={{ width: `${hotspot.confidence}%` }}
+                            />
+                          </div>
+                          <span className="font-mono text-xs font-semibold text-slate-200">
+                            {hotspot.confidence}%
+                          </span>
                         </div>
-                        <span className="font-mono text-xs font-semibold text-slate-200">
-                          {hotspot.confidence}%
+                      ) : (
+                        <span className="font-mono text-xs text-slate-500 italic">
+                          Unrated
                         </span>
-                      </div>
+                      )}
                     </td>
 
                     {/* Coordinates */}

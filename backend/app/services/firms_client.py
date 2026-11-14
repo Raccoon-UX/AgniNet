@@ -15,13 +15,38 @@ logger = logging.getLogger("firms_client")
 _CACHE: Dict[str, Tuple[float, List[NormalizedObservation]]] = {}
 
 
+def _sanitize_error(msg: str) -> str:
+    """Strips any sensitive credentials from error messages and logs."""
+    str_msg = str(msg)
+    if settings.nasa_firms_map_key:
+        clean_key = settings.nasa_firms_map_key.strip()
+        if clean_key:
+            return str_msg.replace(clean_key, "***MAP_KEY***")
+    return str_msg
+
+
 class FirmsApiException(Exception):
     def __init__(self, message: str, status_code: int = 502):
-        super().__init__(message)
+        super().__init__(_sanitize_error(message))
         self.status_code = status_code
 
 
 class FirmsClient:
+    SOURCE_MAP = {
+        "ALL": [
+            "VIIRS_NOAA20_NRT",
+            "VIIRS_NOAA21_NRT",
+            "VIIRS_SNPP_NRT",
+            "MODIS_NRT",
+        ],
+        "VIIRS": [
+            "VIIRS_NOAA20_NRT",
+            "VIIRS_NOAA21_NRT",
+            "VIIRS_SNPP_NRT",
+        ],
+        "MODIS": ["MODIS_NRT"],
+    }
+
     def __init__(self):
         self.base_url = settings.firms_base_url.rstrip("/")
         self.timeout = settings.request_timeout_seconds
@@ -62,11 +87,10 @@ class FirmsClient:
         if cache_key in _CACHE:
             cached_time, cached_obs = _CACHE[cache_key]
             if now - cached_time < self.cache_ttl:
-                logger.info(f"Returning cached FIRMS feed for {cache_key} ({len(cached_obs)} records)")
+                logger.info(f"Returning cached FIRMS feed for {source} in {extent_str} ({len(cached_obs)} records)")
                 return cached_obs
 
         # Build URL without logging secret key
-        # NASA FIRMS Area endpoint: /api/area/csv/[MAP_KEY]/[SOURCE]/[EXTENT]/[DAY_RANGE]/[DATE]
         map_key = settings.nasa_firms_map_key.strip()  # type: ignore
         url_parts = [self.base_url, "area", "csv", map_key, source, extent_str, str(day_range)]
         if date_str:
@@ -79,20 +103,25 @@ class FirmsClient:
             try:
                 response = await client.get(url)
             except httpx.TimeoutException:
-                raise FirmsApiException("Upstream NASA FIRMS API request timed out (15s limit).", status_code=504)
+                raise FirmsApiException(f"NASA FIRMS API request for {source} timed out ({self.timeout}s limit).", status_code=504)
             except httpx.RequestError as exc:
-                raise FirmsApiException(f"Network error communicating with NASA FIRMS API: {str(exc)}", status_code=502)
+                sanitized_exc = _sanitize_error(str(exc))
+                raise FirmsApiException(f"Network error communicating with NASA FIRMS API: {sanitized_exc}", status_code=502)
 
         if response.status_code == 403 or "Invalid MAP_KEY" in response.text:
-            raise FirmsApiException("NASA FIRMS authentication rejected: Provided MAP_KEY is invalid or unauthorized.", status_code=403)
+            raise FirmsApiException("NASA FIRMS authentication rejected: MAP_KEY is invalid or unauthorized.", status_code=403)
         if response.status_code == 429:
             raise FirmsApiException("NASA FIRMS API rate limit reached. Please throttle queries or increase cache TTL.", status_code=429)
         if response.status_code != 200:
-            raise FirmsApiException(f"NASA FIRMS API returned upstream HTTP {response.status_code}: {response.text[:200]}", status_code=502)
+            preview = _sanitize_error(response.text[:120])
+            raise FirmsApiException(f"NASA FIRMS API returned HTTP {response.status_code}: {preview}", status_code=502)
 
-        # Parse CSV
         csv_text = response.text
-        # Note: If no fires exist in extent, FIRMS returns header only or blank
+        # Content verification: check if response is HTML or error text
+        stripped = csv_text.strip()
+        if stripped.startswith("<!DOCTYPE") or stripped.startswith("<html") or "Invalid API call" in stripped:
+            raise FirmsApiException(f"NASA FIRMS returned non-CSV response: {_sanitize_error(stripped[:100])}", status_code=502)
+
         observations = parse_firms_csv(csv_text, source)
         _CACHE[cache_key] = (now, observations)
         return observations
@@ -109,27 +138,25 @@ class FirmsClient:
         """
         Retrieves normalized observations. If MAP_KEY is absent or force_demo is True,
         safely falls back to labeled demo fixtures.
+        Accurately reports multi-feed coverage, partial failures, and degraded states.
         """
         # Fallback to demo mode if key not present or forced
         if not settings.is_firms_configured or force_demo:
             return get_demo_observations(source_filter=source, min_frp=min_frp, bbox=bbox)
 
-        # Default bounding box if not supplied (e.g. Western US & California active fire zone)
-        # Note: FIRMS free tier area limit requires specific regional bounding box
-        target_bbox = bbox or [-125.0, 32.0, -114.0, 42.5]
+        # Default bounding box if not supplied (Northern Australia active fire belt)
+        target_bbox = bbox or [120.0, -25.0, 145.0, -12.0]
 
-        # Determine which sources to query
-        sources_to_query: List[str] = []
-        if source == "ALL":
-            sources_to_query = ["VIIRS_NOAA20_NRT", "MODIS_NRT"]
-        elif source == "MODIS":
-            sources_to_query = ["MODIS_NRT"]
-        elif source == "VIIRS":
-            sources_to_query = ["VIIRS_NOAA20_NRT", "VIIRS_SNPP_NRT"]
+        # Determine which feeds to query
+        src_upper = source.upper()
+        if src_upper in self.SOURCE_MAP:
+            sources_to_query = list(self.SOURCE_MAP[src_upper])
         else:
             sources_to_query = [source]
 
         all_observations: List[NormalizedObservation] = []
+        succeeded_sources: List[str] = []
+        failed_sources: List[str] = []
         upstream_errors: List[str] = []
 
         for src in sources_to_query:
@@ -141,13 +168,20 @@ class FirmsClient:
                     date_str=date_str,
                 )
                 all_observations.extend(obs)
+                succeeded_sources.append(src)
             except FirmsApiException as exc:
-                logger.warning(f"Error fetching {src}: {str(exc)}")
-                upstream_errors.append(f"{src}: {str(exc)}")
+                err_text = _sanitize_error(str(exc))
+                logger.warning(f"Feed error for {src}: {err_text}")
+                failed_sources.append(src)
+                upstream_errors.append(f"{src}: {err_text}")
 
-        # If all live queries failed, fallback cleanly with informative notice
-        if upstream_errors and len(all_observations) == 0:
+        # If ALL requested live queries failed, fallback cleanly with informative notice
+        if len(succeeded_sources) == 0:
             demo_resp = get_demo_observations(source_filter=source, min_frp=min_frp, bbox=bbox)
+            demo_resp.status = "demo_fallback"
+            demo_resp.is_partial = False
+            demo_resp.succeeded_sources = []
+            demo_resp.failed_sources = failed_sources
             demo_resp.notice = f"LIVE API FAILED ({'; '.join(upstream_errors)}). Showing synthetic fallback."
             return demo_resp
 
@@ -165,9 +199,21 @@ class FirmsClient:
 
         kpis = compute_kpis(deduped)
 
+        is_partial = len(failed_sources) > 0
+        feed_status = "degraded" if is_partial else "healthy"
+
+        if is_partial:
+            notice = f"PARTIAL SENSOR FEED: Succeeded [{', '.join(succeeded_sources)}]; Failed [{', '.join(failed_sources)}]."
+        else:
+            notice = f"LIVE STREAM: All requested sensors operational [{', '.join(succeeded_sources)}]."
+
         return FireObservationsResponse(
             is_live=True,
             data_source="NASA_FIRMS_LIVE",
+            status=feed_status,
+            is_partial=is_partial,
+            succeeded_sources=succeeded_sources,
+            failed_sources=failed_sources,
             fetched_at=datetime.now(timezone.utc).isoformat(),
             total_count=len(deduped),
             observations=deduped[:settings.max_records_per_response],
@@ -175,7 +221,7 @@ class FirmsClient:
             attribution="NASA FIRMS (LANCE/EOSDIS) Near Real-Time Active Fire Data",
             bounding_box=target_bbox,
             applied_source=source,
-            notice="LIVE STREAM: Real NASA FIRMS MODIS/VIIRS satellite observations." if not upstream_errors else f"Partial feed loaded. Warnings: {'; '.join(upstream_errors)}",
+            notice=notice,
         )
 
 

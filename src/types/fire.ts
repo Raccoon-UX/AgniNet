@@ -17,10 +17,10 @@ export interface HotspotObservation {
   scanAngle: number;
   trackKm: number;
   acquisitionDate: string;
-  acquisitionTimeUtc: string;
+  acquisitionTimeUtc: string | null;
   satellite: SatellitePlatform;
   sensor: "MODIS" | "VIIRS" | "HARMONIZED";
-  confidence: number; // 0-100%
+  confidence: number | null; // 0-100% or null if not reported
   version: string;
   brightT31Kelvin: number;
   frpMw: number; // Fire Radiative Power in Megawatts
@@ -37,15 +37,15 @@ export interface HotspotObservation {
 
 export interface HotspotKpis {
   totalHotspots: number;
-  totalHotspotsDelta?: number;
+  totalHotspotsDelta?: number | null;
   modisCount: number;
-  modisDelta?: number;
+  modisDelta?: number | null;
   viirsCount: number;
-  viirsDelta?: number;
-  harmonizedMatches: number;
-  harmonizedDelta?: number;
+  viirsDelta?: number | null;
+  harmonizedMatches?: number | null;
+  harmonizedDelta?: number | null;
   totalFrpGigawatts: number;
-  avgConfidence: number;
+  avgConfidence?: number | null;
   activeSensorsOnline?: number;
   totalSensors?: number;
   daytimeCount?: number;
@@ -109,7 +109,7 @@ export interface BackendObservation {
   latitude: number;
   longitude: number;
   acquisition_date: string;
-  acquisition_time_utc: string;
+  acquisition_time_utc?: string | null;
   satellite: string;
   instrument: "MODIS" | "VIIRS" | "OTHER";
   sensor_source: string;
@@ -130,6 +130,10 @@ export interface BackendObservation {
 export interface BackendFireResponse {
   is_live: boolean;
   data_source: "NASA_FIRMS_LIVE" | "DEMO_FIXTURES";
+  status?: "healthy" | "degraded" | "demo_fallback";
+  is_partial?: boolean;
+  succeeded_sources?: string[];
+  failed_sources?: string[];
   fetched_at: string;
   total_count: number;
   observations: BackendObservation[];

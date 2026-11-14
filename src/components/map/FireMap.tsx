@@ -158,11 +158,11 @@ export const FireMap: React.FC<FireMapProps> = ({
             </div>
             <div>
               <span class="text-slate-400 block text-[10px]">Confidence</span>
-              <span class="font-mono text-emerald-400 font-semibold">${hotspot.confidence}%</span>
+              <span class="font-mono text-emerald-400 font-semibold">${hotspot.confidence != null ? `${hotspot.confidence}%` : "Unrated"}</span>
             </div>
             <div>
               <span class="text-slate-400 block text-[10px]">Acquired (UTC)</span>
-              <span class="font-mono text-slate-200">${hotspot.acquisitionTimeUtc}</span>
+              <span class="font-mono text-slate-200">${hotspot.acquisitionTimeUtc ?? "Unspecified"}</span>
             </div>
           </div>
 

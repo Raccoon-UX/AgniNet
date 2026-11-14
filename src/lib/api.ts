@@ -31,10 +31,10 @@ export function mapBackendToHotspot(obs: BackendObservation): HotspotObservation
     scanAngle: obs.scan_angle ?? 0,
     trackKm: obs.track_km ?? 0,
     acquisitionDate: obs.acquisition_date,
-    acquisitionTimeUtc: obs.acquisition_time_utc,
+    acquisitionTimeUtc: obs.acquisition_time_utc ?? null,
     satellite: obs.satellite,
     sensor: obs.instrument === "MODIS" ? "MODIS" : "VIIRS",
-    confidence: obs.confidence_numeric ?? (typeof obs.confidence === "number" ? obs.confidence : 80),
+    confidence: obs.confidence_numeric ?? (typeof obs.confidence === "number" ? obs.confidence : null),
     version: obs.version ?? "NRT",
     brightT31Kelvin: obs.bright_t31_kelvin ?? 0,
     frpMw: obs.frp_mw ?? 0,
@@ -55,6 +55,10 @@ export async function fetchObservations(
   kpis: HotspotKpis;
   isLive: boolean;
   dataSource: "NASA_FIRMS_LIVE" | "DEMO_FIXTURES";
+  status?: "healthy" | "degraded" | "demo_fallback";
+  isPartial?: boolean;
+  succeededSources?: string[];
+  failedSources?: string[];
   fetchedAt: string;
   attribution: string;
   notice?: string | null;
@@ -88,19 +92,24 @@ export async function fetchObservations(
     const data: BackendFireResponse = await res.json();
     const mapped = data.observations.map(mapBackendToHotspot);
 
+    const isLive = data.is_live;
     const kpis: HotspotKpis = {
       totalHotspots: data.kpis.total_hotspots,
-      totalHotspotsDelta: 12.4,
+      // No arbitrary or hardcoded deltas; unavailable without multi-day historical baseline archive
+      totalHotspotsDelta: null,
       modisCount: data.kpis.modis_count,
-      modisDelta: 6.8,
+      modisDelta: null,
       viirsCount: data.kpis.viirs_count,
-      viirsDelta: 14.9,
-      harmonizedMatches: Math.round(data.kpis.total_hotspots * 0.22),
-      harmonizedDelta: 18.2,
+      viirsDelta: null,
+      // Never calculate harmonized matches as an arbitrary percentage; pending Phase 3 cross-sensor engine
+      harmonizedMatches: null,
+      harmonizedDelta: null,
       totalFrpGigawatts: Number((data.kpis.total_frp_mw / 1000).toFixed(1)),
-      avgConfidence: data.kpis.avg_confidence ? Math.round(data.kpis.avg_confidence) : 85,
-      activeSensorsOnline: 5,
+      avgConfidence: data.kpis.avg_confidence != null ? Math.round(data.kpis.avg_confidence) : null,
+      activeSensorsOnline: data.succeeded_sources ? data.succeeded_sources.length : (isLive ? 4 : 5),
       totalSensors: 5,
+      daytimeCount: data.kpis.daytime_count,
+      nighttimeCount: data.kpis.nighttime_count,
       isLive: data.is_live,
       dataSource: data.data_source,
     };
@@ -110,6 +119,10 @@ export async function fetchObservations(
       kpis,
       isLive: data.is_live,
       dataSource: data.data_source,
+      status: data.status,
+      isPartial: data.is_partial,
+      succeededSources: data.succeeded_sources,
+      failedSources: data.failed_sources,
       fetchedAt: data.fetched_at,
       attribution: data.attribution,
       notice: data.notice,
@@ -123,6 +136,8 @@ export async function fetchObservations(
       kpis: DEMO_KPIS,
       isLive: false,
       dataSource: "DEMO_FIXTURES",
+      status: "demo_fallback",
+      isPartial: false,
       fetchedAt: new Date().toISOString(),
       attribution: "AgniNet Synthetic FIRMS Fixtures (Backend Offline Demo Fallback)",
       notice: `BACKEND OFFLINE (${errorMsg}). Showing local demo fixtures. Run backend server on port 8000 for live telemetry.`,

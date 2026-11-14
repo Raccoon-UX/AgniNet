@@ -266,6 +266,10 @@ def get_demo_observations(
     return FireObservationsResponse(
         is_live=False,
         data_source="DEMO_FIXTURES",
+        status="demo_fallback",
+        is_partial=False,
+        succeeded_sources=[],
+        failed_sources=[],
         fetched_at=datetime.now(timezone.utc).isoformat(),
         total_count=len(results),
         observations=results,
