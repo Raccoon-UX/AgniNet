@@ -17,8 +17,11 @@ def get_db_path() -> str:
 
 
 def init_db(db_path: Optional[str] = None) -> None:
-    """Initializes SQLite database schema and indices."""
+    """Initializes SQLite database schema and indices, ensuring parent directories exist."""
     target_path = db_path or get_db_path()
+    parent_dir = os.path.dirname(os.path.abspath(target_path))
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
     conn = sqlite3.connect(target_path)
     conn.execute("PRAGMA journal_mode = WAL;")
     conn.execute("PRAGMA synchronous = NORMAL;")

@@ -101,6 +101,44 @@ class HistoricalService:
         harm_res = engine.harmonize(raw_obs, is_live=False, data_source="NASA_FIRMS_ARCHIVE")
         return raw_obs, harm_res.events
 
+    def _determine_provenance(self, raw_obs: List[NormalizedObservation]) -> Dict[str, Any]:
+        """
+        Calculates provenance metadata with strict auditability across empty,
+        demo-only, live-only, and mixed datasets.
+        """
+        if not raw_obs:
+            return {
+                "data_source": "EMPTY_ARCHIVE",
+                "is_live": False,
+                "is_synthetic": False,
+                "provenance": "AgniNet-Historical-Pipeline-v1.1 (Empty Store)",
+            }
+
+        live_count = sum(1 for o in raw_obs if o.is_live)
+        synthetic_count = len(raw_obs) - live_count
+
+        if live_count == len(raw_obs):
+            return {
+                "data_source": "NASA_FIRMS_LIVE_ARCHIVE",
+                "is_live": True,
+                "is_synthetic": False,
+                "provenance": f"NASA_FIRMS_ARCHIVE (Authenticated Telemetry Archive, {live_count} records)",
+            }
+        elif synthetic_count == len(raw_obs):
+            return {
+                "data_source": "DEMO_HISTORICAL_ARCHIVE",
+                "is_live": False,
+                "is_synthetic": True,
+                "provenance": f"DEMO_HISTORICAL_ARCHIVE (Synthetically Modeled Historical Regime, {synthetic_count} records)",
+            }
+        else:
+            return {
+                "data_source": "MIXED_HISTORICAL_ARCHIVE",
+                "is_live": False,
+                "is_synthetic": True,
+                "provenance": f"MIXED_ARCHIVE ({live_count} Live NASA Observations, {synthetic_count} Synthetic Fixtures)",
+            }
+
     def get_summary(
         self,
         start_date: Optional[str] = None,
@@ -160,7 +198,7 @@ class HistoricalService:
         effective_end = end_date or (max_d or "N/A")
 
         platforms = sorted(list({o.satellite for o in raw_obs if o.satellite}))
-        is_live_any = any(o.is_live for o in raw_obs)
+        prov = self._determine_provenance(raw_obs)
 
         return HistoricalSummary(
             total_events=len(events),
@@ -177,9 +215,10 @@ class HistoricalService:
             date_range_start=effective_start,
             date_range_end=effective_end,
             active_platforms=platforms,
-            data_source="NASA_FIRMS_LIVE_ARCHIVE" if is_live_any else "DEMO_HISTORICAL_ARCHIVE",
-            is_live=is_live_any,
-            provenance="AgniNet-Historical-Pipeline-v1.0 (SQLite Persistent Store)",
+            data_source=prov["data_source"],
+            is_live=prov["is_live"],
+            is_synthetic=prov["is_synthetic"],
+            provenance=prov["provenance"],
         )
 
     def get_trends(
@@ -271,15 +310,16 @@ class HistoricalService:
                 )
             )
 
-        is_live_any = any(o.is_live for o in raw_obs)
+        prov = self._determine_provenance(raw_obs)
 
         return HistoricalTrendsResponse(
             granularity=granularity,
             total_buckets=len(trend_points),
             trends=trend_points,
-            data_source="NASA_FIRMS_LIVE_ARCHIVE" if is_live_any else "DEMO_HISTORICAL_ARCHIVE",
-            is_live=is_live_any,
-            provenance="AgniNet-Historical-Pipeline-v1.0 (SQLite Persistent Store)",
+            data_source=prov["data_source"],
+            is_live=prov["is_live"],
+            is_synthetic=prov["is_synthetic"],
+            provenance=prov["provenance"],
             fetched_at=datetime.now(timezone.utc).isoformat(),
         )
 
@@ -320,30 +360,45 @@ class HistoricalService:
             events_by_date.setdefault(e.acquisition_date, []).append(e)
 
         all_dates = sorted(list(set(obs_by_date.keys()) | set(events_by_date.keys())))
+        prov = self._determine_provenance(raw_obs)
+
         if not all_dates:
             min_d, max_d = self.repo.get_date_bounds()
             return HistoricalCalendarResponse(
                 days=[],
                 total_days=0,
                 max_daily_events=0,
+                max_daily_modis_frp_mw=0.0,
+                max_daily_viirs_frp_mw=0.0,
+                peak_single_frp_mw=0.0,
                 max_daily_frp_mw=0.0,
                 date_range_start=start_date or (min_d or "N/A"),
                 date_range_end=end_date or (max_d or "N/A"),
-                data_source="DEMO_HISTORICAL_ARCHIVE",
-                is_live=False,
-                provenance="AgniNet-Historical-Pipeline-v1.0 (SQLite Persistent Store)",
+                data_source=prov["data_source"],
+                is_live=prov["is_live"],
+                is_synthetic=prov["is_synthetic"],
+                provenance=prov["provenance"],
                 fetched_at=datetime.now(timezone.utc).isoformat(),
             )
 
-        # First pass to compute max daily metric for normalization
-        daily_max_frp = 0.0
+        # First pass to compute sensor-specific maxima for dimensionless normalization
+        daily_max_modis_frp = 0.0
+        daily_max_viirs_frp = 0.0
         daily_max_events = 0
+        overall_peak_single_frp = 0.0
+
         for d in all_dates:
             d_obs = obs_by_date.get(d, [])
             d_evts = events_by_date.get(d, [])
-            total_frp = sum(o.frp_mw for o in d_obs if o.frp_mw is not None)
-            daily_max_frp = max(daily_max_frp, total_frp)
+            m_frp = sum(o.frp_mw for o in d_obs if o.instrument == "MODIS" and o.frp_mw is not None)
+            v_frp = sum(o.frp_mw for o in d_obs if o.instrument == "VIIRS" and o.frp_mw is not None)
+            frps = [o.frp_mw for o in d_obs if o.frp_mw is not None]
+
+            daily_max_modis_frp = max(daily_max_modis_frp, m_frp)
+            daily_max_viirs_frp = max(daily_max_viirs_frp, v_frp)
             daily_max_events = max(daily_max_events, len(d_evts))
+            if frps:
+                overall_peak_single_frp = max(overall_peak_single_frp, max(frps))
 
         calendar_days: List[HistoricalCalendarDay] = []
         for d in all_dates:
@@ -354,13 +409,24 @@ class HistoricalService:
             v_count = sum(1 for o in d_obs if o.instrument == "VIIRS")
             m_frp = sum(o.frp_mw for o in d_obs if o.instrument == "MODIS" and o.frp_mw is not None)
             v_frp = sum(o.frp_mw for o in d_obs if o.instrument == "VIIRS" and o.frp_mw is not None)
-            day_frp = m_frp + v_frp
 
-            # Normalized intensity index (0 to 100)
-            if daily_max_frp > 0:
-                intensity = int(min(100, round((day_frp / daily_max_frp) * 100)))
+            # Dimensionless Sensor-Normalized Intensity Index (0 to 100)
+            # Physical Law: MODIS FRP (4.0µm, 1km) and VIIRS FRP (3.74/4.05µm, 375m)
+            # MUST NEVER be summed. Each sensor component is scaled against its own
+            # peak daily cumulative output across the observation period into a [0.0, 1.0] ratio.
+            norm_modis = (m_frp / daily_max_modis_frp) if daily_max_modis_frp > 0 else 0.0
+            norm_viirs = (v_frp / daily_max_viirs_frp) if daily_max_viirs_frp > 0 else 0.0
+
+            if m_count > 0 and v_count > 0:
+                severity_ratio = (norm_modis + norm_viirs) / 2.0
+            elif m_count > 0:
+                severity_ratio = norm_modis
+            elif v_count > 0:
+                severity_ratio = norm_viirs
             else:
-                intensity = 0
+                severity_ratio = 0.0
+
+            intensity = int(min(100, round(severity_ratio * 100)))
 
             # Determine dominant sensor
             if m_count > v_count * 1.5:
@@ -387,18 +453,20 @@ class HistoricalService:
                 )
             )
 
-        is_live_any = any(o.is_live for o in raw_obs)
-
         return HistoricalCalendarResponse(
             days=calendar_days,
             total_days=len(calendar_days),
             max_daily_events=daily_max_events,
-            max_daily_frp_mw=round(daily_max_frp, 1),
+            max_daily_modis_frp_mw=round(daily_max_modis_frp, 1),
+            max_daily_viirs_frp_mw=round(daily_max_viirs_frp, 1),
+            peak_single_frp_mw=round(overall_peak_single_frp, 1),
+            max_daily_frp_mw=round(overall_peak_single_frp, 1),
             date_range_start=all_dates[0],
             date_range_end=all_dates[-1],
-            data_source="NASA_FIRMS_LIVE_ARCHIVE" if is_live_any else "DEMO_HISTORICAL_ARCHIVE",
-            is_live=is_live_any,
-            provenance="AgniNet-Historical-Pipeline-v1.0 (SQLite Persistent Store)",
+            data_source=prov["data_source"],
+            is_live=prov["is_live"],
+            is_synthetic=prov["is_synthetic"],
+            provenance=prov["provenance"],
             fetched_at=datetime.now(timezone.utc).isoformat(),
         )
 
@@ -415,6 +483,7 @@ class HistoricalService:
             min_frp=min_frp,
         )
 
+        obs_map = {o.id: o for o in raw_obs}
         region_obs: Dict[str, List[NormalizedObservation]] = {}
         for o in raw_obs:
             r = o.region or "Unassigned Region"
@@ -424,7 +493,7 @@ class HistoricalService:
         for e in events:
             # Map event to region of its first observation or representative
             first_obs_id = e.modis_observation_ids[0] if e.modis_observation_ids else (e.viirs_observation_ids[0] if e.viirs_observation_ids else None)
-            matched_obs = next((o for o in raw_obs if o.id == first_obs_id), None) if first_obs_id else None
+            matched_obs = obs_map.get(first_obs_id) if first_obs_id else None
             r = matched_obs.region if matched_obs and matched_obs.region else "Unassigned Region"
             region_events.setdefault(r, []).append(e)
 
@@ -456,14 +525,15 @@ class HistoricalService:
 
         # Sort by event count descending
         stats_list.sort(key=lambda s: s.event_count, reverse=True)
-        is_live_any = any(o.is_live for o in raw_obs)
+        prov = self._determine_provenance(raw_obs)
 
         return HistoricalRegionsResponse(
             regions=stats_list,
             total_events=total_evts,
-            data_source="NASA_FIRMS_LIVE_ARCHIVE" if is_live_any else "DEMO_HISTORICAL_ARCHIVE",
-            is_live=is_live_any,
-            provenance="AgniNet-Historical-Pipeline-v1.0 (SQLite Persistent Store)",
+            data_source=prov["data_source"],
+            is_live=prov["is_live"],
+            is_synthetic=prov["is_synthetic"],
+            provenance=prov["provenance"],
             fetched_at=datetime.now(timezone.utc).isoformat(),
         )
 
@@ -524,16 +594,17 @@ class HistoricalService:
 
         # Sort by observation count descending
         sensor_stats.sort(key=lambda s: s.observation_count, reverse=True)
-        is_live_any = any(o.is_live for o in raw_obs)
+        prov = self._determine_provenance(raw_obs)
 
         return HistoricalSensorsResponse(
             sensors=sensor_stats,
             total_observations=total_obs,
             modis_observation_count=modis_count,
             viirs_observation_count=viirs_count,
-            data_source="NASA_FIRMS_LIVE_ARCHIVE" if is_live_any else "DEMO_HISTORICAL_ARCHIVE",
-            is_live=is_live_any,
-            provenance="AgniNet-Historical-Pipeline-v1.0 (SQLite Persistent Store)",
+            data_source=prov["data_source"],
+            is_live=prov["is_live"],
+            is_synthetic=prov["is_synthetic"],
+            provenance=prov["provenance"],
             fetched_at=datetime.now(timezone.utc).isoformat(),
         )
 
@@ -568,11 +639,11 @@ class HistoricalService:
             events = [e for e in events if e.classification == classification]
 
         total_evts = len(events)
-        total_pages = max(1, (total_evts + page_size - 1) // page_size)
+        total_pages = max(1, (total_evts + page_size - 1) // page_size) if total_evts > 0 else 1
         offset = (page - 1) * page_size
         paginated = events[offset : offset + page_size]
 
-        is_live_any = any(o.is_live for o in raw_obs)
+        prov = self._determine_provenance(raw_obs)
 
         return HistoricalEventsResponse(
             events=paginated,
@@ -580,9 +651,10 @@ class HistoricalService:
             page=page,
             page_size=page_size,
             total_pages=total_pages,
-            data_source="NASA_FIRMS_LIVE_ARCHIVE" if is_live_any else "DEMO_HISTORICAL_ARCHIVE",
-            is_live=is_live_any,
-            provenance="AgniNet-Historical-Pipeline-v1.0 (SQLite Persistent Store)",
+            data_source=prov["data_source"],
+            is_live=prov["is_live"],
+            is_synthetic=prov["is_synthetic"],
+            provenance=prov["provenance"],
             fetched_at=datetime.now(timezone.utc).isoformat(),
         )
 

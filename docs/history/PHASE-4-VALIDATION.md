@@ -1,7 +1,7 @@
-# AgniNet — Phase 4 Scientific Validation & Verification Report
+# AgniNet — Phase 4.1 Scientific Validation & Production Hardening Report
 
-**Document Version:** 1.0.0  
-**Classification:** Scientific Verification, Quality Assurance & Test Report  
+**Document Version:** 1.1.0  
+**Classification:** Scientific Verification, Quality Assurance & Security Audit  
 **Date:** November 2026  
 **Status:** APPROVED FOR PRODUCTION  
 
@@ -9,112 +9,135 @@
 
 ## 1. Overview & Verification Scope
 
-This document provides rigorous scientific and technical validation of **Phase 4: Historical Fire Analytics & Intelligence**. It evaluates:
-1. NASA FIRMS archive access constraints and provenance labeling.
-2. The scientific justification and software enforcement of **Strict FRP Sensor Separation**.
-3. Idempotent deduplication and SQLite ACID persistence.
-4. Harmonization engine reproducibility on multi-temporal historical data.
-5. End-to-end regression testing and frontend production readiness.
+This document provides rigorous scientific and technical validation of **Phase 4 & Phase 4.1: Historical Fire Analytics & Production Reliability Hardening**. It evaluates:
+1. Mathematical and physical integrity of the **Dimensionless Sensor-Normalized Calendar Intensity Index**.
+2. Strict FRP sensor separation and test verification proving the complete elimination of cross-sensor FRP summation.
+3. Multi-tier **Data Provenance State Machine** handling empty, demo-only, live-only, and mixed-source archives with explicit `is_synthetic` labeling.
+4. **Ingestion Security Architecture**: Authentication, batch-size throttling, radiometric bounds validation, and secret masking.
+5. **Deployment Persistence Verification**: Render Persistent Disk mount, ephemeral container caveats, and absolute path initialization.
+6. Automated regression test suite results (74/74 passing).
 
 ---
 
-## 2. NASA FIRMS Ingestion Constraints & Provenance
+## 2. Scientific Integrity: Calendar FRP Methodology & Dimensionless Normalization
 
-### 2.1 The NRT 10-Day Window Constraint
-NASA FIRMS Near Real-Time (NRT) API endpoints enforce strict temporal limits:
-- The standard FIRMS NRT API (`/api/area/csv/{MAP_KEY}/...`) only supports a `day_range` between $1$ and $10$ days relative to the current UTC date.
-- Historical queries for multi-month windows (e.g. June 1 to November 14, 2026) cannot be fetched directly through the ephemeral NRT endpoints. Doing so returns an HTTP error or empty dataset.
-- Real historical archive data requires bulk FTP/HTTPS download from NASA Earthdata / LANCE archives or specialized custom downloads.
+### 2.1 The Cross-Sensor FRP Fallacy
+In early drafts, total daily thermal output was colloquially computed as $\sum \text{FRP}_{\text{MODIS}} + \sum \text{FRP}_{\text{VIIRS}}$. In Phase 4.1, this practice has been completely eliminated as physically and mathematically indefensible:
+- **MODIS ($4.0\,\mu\text{m}$, $1.0\text{ km}$ at nadir):** Yields large area-integrated radiative flux heavily influenced by point-spread function blur at scan edges ($>4.8\text{ km}$).
+- **VIIRS ($3.74/4.05\,\mu\text{m}$, $375\text{ m}$ at nadir):** Yields sub-pixel detections capable of isolating small low-temperature fires ($<10\text{ MW}$) that fall below MODIS detection limits.
+- **Physical Incompatibility:** Due to Planck's Law and non-linear sub-pixel emitter temperature distributions, adding Megawatts derived from different instruments produces a meaningless hybrid quantity that double-counts energy by up to $500\%$.
 
-### 2.2 AgniNet Historical Solution & Provenance Badging
-To enable immediate, zero-ops historical analysis without requiring multi-gigabyte bulk downloads during local evaluation:
-- AgniNet integrates a persistent SQLite database (`backend/data/agninet_historical.db`) managed via `HistoricalRepository`.
-- On cold start, `HistoricalService` checks the database. If unpopulated, it deterministically seeds a 180-day baseline dataset (`DEMO_HISTORICAL_ARCHIVE`) encompassing 4,161 observations across 7 global biomes.
-- **Provenance Integrity:** Every API endpoint returns explicit `data_source` headers and labels (`DEMO_HISTORICAL_ARCHIVE` or `FIRMS_ARCHIVE`). The UI prominently displays these provenance badges to ensure complete transparency.
+### 2.2 Phase 4.1 Dimensionless Normalization Formula
+To construct a scientifically sound $0 - 100$ thermal severity index without cross-sensor addition, `HistoricalService.get_calendar()` normalizes each instrument's daily radiative output against its own period maximum:
 
----
+$$\hat{M}_d = \begin{cases} \frac{M_d}{M_{\max}}, & \text{if } M_{\max} > 0 \\ 0.0, & \text{otherwise} \end{cases} \quad (\text{dimensionless, } [0, 1])$$
 
-## 3. Scientific Verification: Strict FRP Sensor Separation
+$$\hat{V}_d = \begin{cases} \frac{V_d}{V_{\max}}, & \text{if } V_{\max} > 0 \\ 0.0, & \text{otherwise} \end{cases} \quad (\text{dimensionless, } [0, 1])$$
 
-### 3.1 Physical & Radiometric Rationale
-Fire Radiative Power (FRP) quantifies the rate of radiant thermal energy emitted by a burning fire, expressed in Megawatts ($\text{MW}$). However, FRP derived from MODIS and VIIRS cannot be directly summed or averaged due to fundamental sensor differences:
+Where $M_d$ and $V_d$ are cumulative daily MODIS and VIIRS FRP, and $M_{\max}, V_{\max}$ are the maximum single-day outputs observed across the entire query window.
 
-1. **Spectral Band Pass:**
-   - **MODIS:** Uses Band 21/22 ($3.929 - 3.989\,\mu\text{m}$, saturation at $\approx 500\text{ K}$) and Band 31 ($10.780 - 11.280\,\mu\text{m}$).
-   - **VIIRS:** Uses Dual-Gain Band M13 ($3.973 - 4.128\,\mu\text{m}$, saturation at $\approx 634\text{ K}$) and Imagery Band I4 ($3.550 - 3.937\,\mu\text{m}$, saturation at $\approx 367\text{ K}$).
-2. **Spatial Footprint:**
-   - **MODIS:** $1.0\text{ km} \times 1.0\text{ km}$ at nadir, swelling to over $4.8\text{ km} \times 2.0\text{ km}$ at scan edge (bow-tie effect).
-   - **VIIRS:** $375\text{ m} \times 375\text{ m}$ (I-band) or $750\text{ m}$ (M-band) at nadir, with onboard pixel-aggregation restricting pixel growth to $< 2\times$ at scan edge.
-3. **Point-Spread Function & Sub-Pixel Non-Linearity:**
-   - Sub-pixel radiance follows the Stefan-Boltzmann $T^4$ law and Planck's Law. Because a single MODIS pixel encompasses an area equivalent to $\approx 7 - 10$ VIIRS 375m pixels, a fire with identical true ground intensity will yield different integrated radiance depending on the background temperature contrast, emitter geometry, and point-spread function.
-   - Summing MODIS FRP and VIIRS FRP for coincident or overlapping fires double-counts the physical combustion energy by $2\times$ to $5\times$.
+The daily composite dimensionless thermal severity $S_d$ is then computed:
+$$S_d = \begin{cases} 
+\frac{\hat{M}_d + \hat{V}_d}{2}, & \text{if } M_d > 0 \text{ and } V_d > 0 \\
+\hat{M}_d, & \text{if } M_d > 0 \text{ and } V_d = 0 \\
+\hat{V}_d, & \text{if } V_d > 0 \text{ and } M_d = 0 \\
+0.0, & \text{if } M_d = 0 \text{ and } V_d = 0
+\end{cases}$$
 
-### 3.2 Implementation Verification
-Every layer of AgniNet enforces strict segregation:
-- **Backend Models (`backend/app/models/history.py`):**
-  - `HistoricalSummary`: Contains `modis_frp_mw` and `viirs_frp_mw` as separate nullable floats. No total combined FRP exists.
-  - `HistoricalTrendPoint`: Contains `modis_frp_mw` and `viirs_frp_mw`.
-  - `HistoricalCalendarDay`: Contains `modis_frp_mw`, `viirs_frp_mw`, and `peak_frp_mw`.
-- **Database Repository (`backend/app/db/historical_repo.py`):**
-  - Uses conditional SQL aggregation:
-    `SUM(CASE WHEN instrument = 'MODIS' THEN frp ELSE 0 END) AS modis_frp`
-    `SUM(CASE WHEN instrument = 'VIIRS' THEN frp ELSE 0 END) AS viirs_frp`
-- **Frontend Presentation (`src/app/historical/page.tsx` & `src/app/calendar/page.tsx`):**
-  - Renders separate KPI cards, distinct color-coded curves (Cyan for MODIS, Amber for VIIRS), and distinct summary callouts.
-  - Explicit warning callout displayed to users highlighting the physical separation protocol.
+The final index is scaled to an integer:
+$$\text{intensity\_index}_d = \min(100, \text{round}(100 \times S_d))$$
+
+**Scientific Proof of Separation:**
+1. Units of $\hat{M}_d$ are $\text{MW} / \text{MW} = 1$ (dimensionless ratio).
+2. Units of $\hat{V}_d$ are $\text{MW} / \text{MW} = 1$ (dimensionless ratio).
+3. The average of two dimensionless ratios is dimensionless. No cross-sensor physical energy is added.
+4. Separate `modis_frp_mw` and `viirs_frp_mw` fields are preserved in full precision on every calendar day.
+5. In `test_calendar_strict_frp_separation_and_dimensionless_intensity()`, automated assertion proves that no field on any calendar record equals $M_d + V_d$.
 
 ---
 
-## 4. Test Suite Execution & Coverage
+## 3. Data Provenance & Synthetic Transparency
 
-The automated test suite in `backend/tests` covers all aspects of data ingestion, spatial indexing, cross-sensor harmonization, and historical analytics.
+### 3.1 Four-State Provenance Classifier
+All historical endpoints route through `_determine_provenance()`, which deterministically assigns audit tags based on observation membership:
 
-### 4.1 Pytest Execution Summary
-All **70 tests** passed:
-- `test_firms_client.py`: 8 tests (real MAP_KEY status, rate limits, NRT coverage, error handling).
-- `test_parser.py`: 12 tests (timestamp validation, null safety, platform mapping).
-- `test_harmonizer.py`: 15 tests (Haversine calculations, scan footprint expansion, classification).
-- `test_harmonizer_audit.py`: 12 tests (spatial boundary checks, UTC midnight transitions, candidate clustering).
-- `test_harmonizer_reliability.py`: 15 tests (antimeridian wrap-around, high-latitude grid expansion, pass-identity FRP).
-- `test_historical.py`: 8 tests (Phase 4 historical analytics suite):
-  1. `test_historical_summary_kpis`: Validates summary totals, active days, peak day, and segregated FRPs.
-  2. `test_historical_trends_daily_weekly_monthly`: Validates temporal bucket aggregations and consistency across granularities.
-  3. `test_historical_calendar_matrix`: Validates normalized intensity index ($0 - 100$), date ranges, and dominant sensor.
-  4. `test_historical_regional_distribution`: Validates biome grouping, percentage math ($100\%$), and regional FRP metrics.
-  5. `test_historical_sensor_distribution`: Validates platform counts (Terra, Aqua, NOAA-20, NOAA-21, Suomi-NPP) and mean/max FRP.
-  6. `test_historical_paginated_events`: Validates harmonization on historical clusters, pagination, and classification filters.
-  7. `test_historical_date_range_and_input_validation`: Validates rejection of `start_date > end_date` and out-of-bound coordinates.
-  8. `test_idempotent_ingestion_and_deduplication`: Verifies that duplicate upserts do not increment database row count.
+| Storage State | `data_source` | `is_live` | `is_synthetic` | `provenance` Description |
+|:---|:---|:---|:---|:---|
+| **Empty** | `EMPTY_ARCHIVE` | `false` | `false` | `AgniNet-Historical-Pipeline-v1.1 (Empty Store)` |
+| **Demo-Only** | `DEMO_HISTORICAL_ARCHIVE` | `false` | `true` | `DEMO_HISTORICAL_ARCHIVE (100% Modeled Synthetic Fixtures, N records)` |
+| **Live-Only** | `NASA_FIRMS_LIVE_ARCHIVE` | `true` | `false` | `NASA_FIRMS_ARCHIVE (Authenticated Telemetry Archive, N records)` |
+| **Mixed** | `MIXED_HISTORICAL_ARCHIVE` | `false` | `true` | `MIXED_ARCHIVE (N Live NASA Observations, M Synthetic Fixtures)` |
+
+*Rule:* If any record in a query result is synthetic, `is_synthetic` is strictly `true` and `is_live` is `false`. Synthetic fixtures are never masked or represented as authentic NASA observations.
 
 ---
 
-## 5. Frontend Quality & Build Verification
+## 4. Ingestion Security & Bounds Validation
 
-The frontend implementation was subjected to full static analysis and production build verification:
+### 4.1 Authentication Protocol
+Endpoint `/api/history/ingest` is protected against unauthorized public writes:
+- Requires either `X-Ingestion-Key` header or `Authorization: Bearer <token>`.
+- Evaluated via `secrets.compare_digest()` for timing-attack resistance.
+- If `INGESTION_API_KEY` is not configured on the server, the endpoint returns **HTTP 403 Forbidden** by default, preventing unintended open writes.
+- Invalid or missing keys return **HTTP 401 Unauthorized**.
 
-1. **TypeScript Validation (`npx tsc --noEmit`):**
-   - 0 type errors across all application and component files.
-2. **ESLint Verification (`npm run lint`):**
-   - Clean, 0 warnings, 0 errors.
-3. **Production Compilation (`npm run build`):**
-   - Successfully compiled and statically prerendered all 10 application routes:
-     - `/` (Overview)
-     - `/explore` (Hotspot Explorer)
-     - `/harmonization` (Harmonization Studio)
-     - `/historical` (Historical Fire Intelligence)
-     - `/calendar` (Fire Activity Calendar)
-     - `/analytics` (Sensor Analytics)
-     - `/live` (Live Operations Console)
-     - `/alerts` (Alerts Manager)
-     - `/docs` (Technical Documentation)
-     - `/status` (Sensor Status & System Health)
+### 4.2 Batch Throttling & Radiometric Bounds
+1. **Batch Size Limit:** Requests with $> 1,000$ records (configurable via `MAX_INGESTION_BATCH_SIZE`) are rejected with **HTTP 400 Bad Request**.
+2. **Provenance Validation:** Must match regex `^[A-Za-z0-9_\-\.]{3,64}$`.
+3. **Physical Range Bounds:**
+   - Latitude: $-90.0 \le \text{lat} \le 90.0$
+   - Longitude: $-180.0 \le \text{lon} \le 180.0$
+   - Radiative Power: $\text{FRP} \ge 0.0\text{ MW}$
+   - Brightness: $100.0\text{ K} \le T_b \le 600.0\text{ K}$
+   - Calendar Dates: Validated against Gregorian calendar (rejects invalid dates like Feb 30 or Month 13).
+   - Time: Validated against 24-hour UTC format `00:00` to `23:59`.
 
 ---
 
-## 6. Observational Limitations & Physical Ground-Truth Disclaimers
+## 5. Deployment Persistence & Render Configuration
 
-Users of the AgniNet Historical Analytics Platform should be cognizant of the following physical remote-sensing constraints:
+### 5.1 Ephemeral Filesystem Warning
+Standard container deployments (e.g. Render Web Services, Fly.io, Heroku) run inside ephemeral container filesystems:
+- Any file written to the container root (`backend/data/agninet_historical.db`) will be **erased** upon container restart, redeployment, or horizontal scaling.
+- To guarantee multi-day historical persistence, a persistent volume must be attached.
 
-1. **Cloud & Smoke Obscuration:** Optical and thermal sensors (MODIS & VIIRS) cannot penetrate dense convective cloud covers or heavy pyrocumulonimbus smoke columns. Active fires burning beneath thick overcast skies will not register thermal anomalies.
-2. **Canopy Attenuation & Smoldering Fires:** Low-intensity smoldering or sub-surface peat fires under thick forest canopies emit attenuated infrared signals, often falling below detection thresholds ($< 10\text{ MW}$).
-3. **Temporal Sampling Windows:** Polar-orbiting sun-synchronous satellites pass over any given terrestrial point approximately 2 to 4 times daily. High-velocity fire spread occurring between overpasses is not captured until the subsequent orbital crossing.
+### 5.2 Render Persistent Disk Configuration
+```yaml
+# render.yaml snippet
+services:
+  - type: web
+    name: agninet-api
+    env: python
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    disk:
+      name: agninet-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: DATABASE_PATH
+        value: /var/data/agninet_historical.db
+      - key: INGESTION_API_KEY
+        generateValue: true
+```
+`DatabaseManager` automatically creates any missing parent directories (`/var/data`) on startup and initializes the SQLite database with WAL mode and secondary indices.
+
+---
+
+## 6. Verification Suite Execution Results
+
+All automated test suites, type checking, and production builds were executed and verified clean:
+
+| Verification Stage | Command / Harness | Result | Notes |
+|:---|:---|:---|:---|
+| **Backend Unit & Integration Tests** | `pytest backend/tests` | **74 passed, 0 failed** | Includes all Phase 4.1 regression tests |
+| **TypeScript Type Checking** | `npx tsc --noEmit` | **0 errors** | Strict mode compliant across all models |
+| **Frontend Code Quality** | `npm run lint` | **0 errors, 0 warnings** | ESLint verified |
+| **Production Build** | `npm run build` | **Successfully compiled** | All 10 routes prerendered with Turbopack |
+
+---
+
+## 7. Limitations & Scientific Disclaimers
+
+1. **Sub-Pixel Resolution Non-Equivalence:** High-intensity fires that saturate VIIRS 375m I-bands may trigger fallback to M-band algorithms, while MODIS 1km pixels integrate surrounding unburnt forest radiance. Direct sensor-to-sensor FRP ratio comparison is invalid without adjusting for point-spread functions.
+2. **Atmospheric & Canopy Attenuation:** Smoke plumes containing heavy soot concentrations absorb $4\,\mu\text{m}$ radiance, attenuating observed FRP relative to ground combustion rates.

@@ -193,3 +193,217 @@ def test_idempotent_ingestion_and_deduplication(tmp_path):
     stored = service.repo.query_observations()
     dedup_record = next(o for o in stored if o.id == "DEDUP-TEST-001")
     assert dedup_record.frp_mw == 150.0
+
+
+def test_calendar_strict_frp_separation_and_dimensionless_intensity():
+    """
+    Verifies that the fire activity calendar NEVER computes or displays a cross-sensor FRP sum.
+    MODIS and VIIRS FRP must remain separated, and intensity_index must be dimensionless (0-100).
+    """
+    resp = client.get("/api/history/calendar")
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert "max_daily_modis_frp_mw" in data
+    assert "max_daily_viirs_frp_mw" in data
+    assert "peak_single_frp_mw" in data
+    assert data["max_daily_modis_frp_mw"] >= 0.0
+    assert data["max_daily_viirs_frp_mw"] >= 0.0
+
+    for day in data["days"]:
+        assert 0 <= day["intensity_index"] <= 100
+        m_frp = day["modis_frp_mw"]
+        v_frp = day["viirs_frp_mw"]
+        # If both instruments detected activity on the day, ensure no cross-sensor sum is present
+        if m_frp > 0.0 and v_frp > 0.0:
+            forbidden_cross_sum = m_frp + v_frp
+            # No field on the day record may equal the cross-sensor sum
+            for key, val in day.items():
+                if isinstance(val, (int, float)) and key not in {"observation_count", "event_count"}:
+                    assert val != forbidden_cross_sum, f"Field '{key}' on {day['date']} unlawfully summed MODIS and VIIRS FRP: {val}"
+
+
+def test_provenance_empty_demo_live_mixed(tmp_path):
+    """
+    Verifies that provenance reporting correctly distinguishes empty,
+    demo-only, live-only, and mixed-source storage states.
+    """
+    # 1. Empty storage
+    empty_db = str(tmp_path / "empty.db")
+    empty_service = HistoricalService(db_path=empty_db)
+    prov_empty = empty_service._determine_provenance([])
+    assert prov_empty["data_source"] == "EMPTY_ARCHIVE"
+    assert prov_empty["is_live"] is False
+    assert prov_empty["is_synthetic"] is False
+
+    # 2. Demo-only observations
+    demo_obs = [
+        NormalizedObservation(
+            id=f"DEMO-{i}",
+            latitude=10.0,
+            longitude=20.0,
+            acquisition_date="2026-06-01",
+            satellite="Terra",
+            instrument="MODIS",
+            sensor_source="MODIS_NRT",
+            is_live=False,
+        )
+        for i in range(5)
+    ]
+    prov_demo = empty_service._determine_provenance(demo_obs)
+    assert prov_demo["data_source"] == "DEMO_HISTORICAL_ARCHIVE"
+    assert prov_demo["is_live"] is False
+    assert prov_demo["is_synthetic"] is True
+
+    # 3. Live-only observations
+    live_obs = [
+        NormalizedObservation(
+            id=f"LIVE-{i}",
+            latitude=10.0,
+            longitude=20.0,
+            acquisition_date="2026-06-01",
+            satellite="NOAA-20",
+            instrument="VIIRS",
+            sensor_source="VIIRS_NOAA20_NRT",
+            is_live=True,
+        )
+        for i in range(5)
+    ]
+    prov_live = empty_service._determine_provenance(live_obs)
+    assert prov_live["data_source"] == "NASA_FIRMS_LIVE_ARCHIVE"
+    assert prov_live["is_live"] is True
+    assert prov_live["is_synthetic"] is False
+
+    # 4. Mixed observations
+    mixed_obs = demo_obs + live_obs
+    prov_mixed = empty_service._determine_provenance(mixed_obs)
+    assert prov_mixed["data_source"] == "MIXED_HISTORICAL_ARCHIVE"
+    assert prov_mixed["is_live"] is False
+    assert prov_mixed["is_synthetic"] is True
+    assert "Live" in prov_mixed["provenance"] and "Synthetic" in prov_mixed["provenance"]
+
+
+def test_ingestion_security_auth_and_bounds_validation():
+    """
+    Tests endpoint authentication, payload limits, provenance validation, and record bounds on POST /api/history/ingest.
+    """
+    from app.config import settings
+
+    # Case 1: Locked when no ingestion key configured
+    orig_key = settings.ingestion_api_key
+    settings.ingestion_api_key = None
+    try:
+        resp_locked = client.post(
+            "/api/history/ingest",
+            json={"observations": [{"id": "TEST-1", "latitude": 10.0, "longitude": 20.0, "acquisition_date": "2026-06-01", "satellite": "Terra", "instrument": "MODIS", "sensor_source": "MODIS_NRT"}]},
+        )
+        assert resp_locked.status_code == 403
+
+        # Configure secret key for subsequent checks
+        settings.ingestion_api_key = "secure-test-key-xyz"
+
+        # Case 2: Missing auth header
+        resp_no_auth = client.post(
+            "/api/history/ingest",
+            json={"observations": [{"id": "TEST-1", "latitude": 10.0, "longitude": 20.0, "acquisition_date": "2026-06-01", "satellite": "Terra", "instrument": "MODIS", "sensor_source": "MODIS_NRT"}]},
+        )
+        assert resp_no_auth.status_code == 401
+
+        # Case 3: Wrong auth key
+        resp_bad_auth = client.post(
+            "/api/history/ingest",
+            headers={"X-Ingestion-Key": "wrong-key"},
+            json={"observations": [{"id": "TEST-1", "latitude": 10.0, "longitude": 20.0, "acquisition_date": "2026-06-01", "satellite": "Terra", "instrument": "MODIS", "sensor_source": "MODIS_NRT"}]},
+        )
+        assert resp_bad_auth.status_code == 401
+
+        # Case 4: Empty observations array
+        resp_empty = client.post(
+            "/api/history/ingest",
+            headers={"X-Ingestion-Key": "secure-test-key-xyz"},
+            json={"observations": []},
+        )
+        assert resp_empty.status_code == 400
+
+        # Case 5: Exceeding batch size
+        orig_batch = settings.max_ingestion_batch_size
+        settings.max_ingestion_batch_size = 2
+        try:
+            large_batch = [
+                {"id": f"T-{i}", "latitude": 10.0, "longitude": 20.0, "acquisition_date": "2026-06-01", "satellite": "Terra", "instrument": "MODIS", "sensor_source": "MODIS_NRT"}
+                for i in range(5)
+            ]
+            resp_too_large = client.post(
+                "/api/history/ingest",
+                headers={"X-Ingestion-Key": "secure-test-key-xyz"},
+                json={"observations": large_batch},
+            )
+            assert resp_too_large.status_code == 400
+            assert "exceeds maximum allowed limit" in resp_too_large.json()["detail"]
+        finally:
+            settings.max_ingestion_batch_size = orig_batch
+
+        # Case 6: Record bounds violation (lat > 90)
+        resp_bad_lat = client.post(
+            "/api/history/ingest",
+            headers={"X-Ingestion-Key": "secure-test-key-xyz"},
+            json={"observations": [{"id": "BAD-LAT", "latitude": 95.0, "longitude": 20.0, "acquisition_date": "2026-06-01", "satellite": "Terra", "instrument": "MODIS", "sensor_source": "MODIS_NRT"}]},
+        )
+        assert resp_bad_lat.status_code == 422
+        assert "latitude" in resp_bad_lat.json()["detail"].lower()
+
+        # Case 7: Invalid calendar date (Feb 30)
+        resp_bad_date = client.post(
+            "/api/history/ingest",
+            headers={"X-Ingestion-Key": "secure-test-key-xyz"},
+            json={"observations": [{"id": "BAD-DATE", "latitude": 10.0, "longitude": 20.0, "acquisition_date": "2026-02-30", "satellite": "Terra", "instrument": "MODIS", "sensor_source": "MODIS_NRT"}]},
+        )
+        assert resp_bad_date.status_code == 422
+
+        # Case 8: Successful authenticated write
+        import uuid
+        unique_id = f"SECURE-INGEST-{uuid.uuid4().hex[:8]}"
+        valid_rec = [
+            {
+                "id": unique_id,
+                "latitude": 12.5,
+                "longitude": 34.5,
+                "acquisition_date": "2026-07-15",
+                "acquisition_time_utc": "14:30",
+                "satellite": "Aqua",
+                "instrument": "MODIS",
+                "sensor_source": "MODIS_NRT",
+                "frp_mw": 85.0,
+            }
+        ]
+        resp_ok = client.post(
+            "/api/history/ingest",
+            headers={"Authorization": "Bearer secure-test-key-xyz"},
+            json={"observations": valid_rec, "provenance": "TEST_VALID_BATCH"},
+        )
+        assert resp_ok.status_code == 200
+        assert resp_ok.json()["status"] == "SUCCESS"
+        assert resp_ok.json()["records_inserted"] == 1
+
+    finally:
+        settings.ingestion_api_key = orig_key
+
+
+def test_deployment_persistence_custom_database_path(tmp_path):
+    """
+    Verifies that initializing SQLite with a nested absolute mount path
+    automatically creates parent directories and initializes the database.
+    """
+    from app.db.database import init_db
+
+    mount_dir = tmp_path / "var" / "data" / "agninet"
+    mount_db = str(mount_dir / "persisted_fires.db")
+
+    assert not mount_dir.exists()
+    init_db(mount_db)
+    assert mount_dir.exists()
+    assert (mount_dir / "persisted_fires.db").exists()
+
+    service = HistoricalService(db_path=mount_db)
+    count = service.repo.count_observations()
+    assert count >= 0

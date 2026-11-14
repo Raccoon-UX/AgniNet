@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     # Historical Database Storage (SQLite persistent store)
     database_path: str = Field(default="backend/data/agninet_historical.db", alias="DATABASE_PATH")
 
+    # Ingestion Security & Limits
+    ingestion_api_key: Optional[str] = Field(default=None, alias="INGESTION_API_KEY")
+    max_ingestion_batch_size: int = Field(default=1000, alias="MAX_INGESTION_BATCH_SIZE")
+
     model_config = SettingsConfigDict(
         env_file=(".env", "../.env", "backend/.env"),
         env_file_encoding="utf-8",

@@ -1,7 +1,9 @@
 import re
+import secrets
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional, Tuple
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query
+from app.config import settings
 from app.models.fire import NormalizedObservation
 from app.models.harmonization import MatchClassification
 from app.models.history import (
@@ -234,29 +236,99 @@ async def get_historical_events(
     )
 
 
+SAFE_PROVENANCE_REGEX = re.compile(r"^[A-Za-z0-9_\-\.]{3,64}$")
+VALID_TIME_REGEX = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
+def _verify_ingestion_auth(
+    x_ingestion_key: Optional[str] = Header(default=None, alias="X-Ingestion-Key"),
+    authorization: Optional[str] = Header(default=None),
+) -> None:
+    """
+    Enforces authentication for ingestion writes.
+    Uses timing-safe comparison to prevent side-channel leakage.
+    Never exposes internal tokens or configuration secrets.
+    """
+    expected = settings.ingestion_api_key
+    if not expected:
+        raise HTTPException(
+            status_code=403,
+            detail="Ingestion is disabled: INGESTION_API_KEY is not configured on the server.",
+        )
+
+    provided = x_ingestion_key
+    if not provided and authorization and authorization.startswith("Bearer "):
+        provided = authorization.split("Bearer ", 1)[1].strip()
+
+    if not provided or not secrets.compare_digest(provided, expected):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or missing ingestion credentials.",
+        )
+
+
 @router.post("/ingest", response_model=HistoricalIngestionResponse)
 async def ingest_historical_records(
     payload: HistoricalIngestionRequest,
+    x_ingestion_key: Optional[str] = Header(default=None, alias="X-Ingestion-Key"),
+    authorization: Optional[str] = Header(default=None),
 ) -> HistoricalIngestionResponse:
     """
     Ingests validated normalized fire observations into the historical archive.
-    Deduplicates idempotently on observation.id.
+    Deduplicates idempotently on observation.id. Protected by API key authentication.
     """
+    _verify_ingestion_auth(x_ingestion_key=x_ingestion_key, authorization=authorization)
+
     if not payload.observations:
         raise HTTPException(status_code=400, detail="Observation payload cannot be empty.")
+
+    if len(payload.observations) > settings.max_ingestion_batch_size:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Batch size of {len(payload.observations)} exceeds maximum allowed limit of {settings.max_ingestion_batch_size} observations.",
+        )
+
+    clean_prov = payload.provenance.strip() if payload.provenance else "MANUAL_INGESTION"
+    if not SAFE_PROVENANCE_REGEX.match(clean_prov):
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid provenance format: must be 3-64 alphanumeric, dash, dot, or underscore characters.",
+        )
 
     valid_obs: List[NormalizedObservation] = []
     for idx, raw in enumerate(payload.observations):
         try:
             obs = NormalizedObservation(**raw)
+
+            # Record bounds & validity checks
+            if not (-90.0 <= obs.latitude <= 90.0):
+                raise ValueError(f"Latitude {obs.latitude} out of bounds [-90, 90]")
+            if not (-180.0 <= obs.longitude <= 180.0):
+                raise ValueError(f"Longitude {obs.longitude} out of bounds [-180, 180]")
+            if obs.frp_mw is not None and obs.frp_mw < 0.0:
+                raise ValueError(f"FRP {obs.frp_mw} cannot be negative")
+            if obs.brightness_kelvin is not None and not (100.0 <= obs.brightness_kelvin <= 600.0):
+                raise ValueError(f"Brightness {obs.brightness_kelvin} out of physical range [100, 600] K")
+
+            # Date calendar check
+            _validate_date_string(obs.acquisition_date, "acquisition_date")
+
+            # Time format check if present
+            if obs.acquisition_time_utc:
+                clean_time = obs.acquisition_time_utc.strip()
+                if not VALID_TIME_REGEX.match(clean_time):
+                    raise ValueError(f"Acquisition time '{clean_time}' must match HH:MM (00:00 to 23:59)")
+
             valid_obs.append(obs)
         except Exception as e:
+            # Sanitize exception message so internal details/secrets are not leaked
+            clean_err = str(e).replace(settings.ingestion_api_key or "___NOKEY___", "[REDACTED]")
             raise HTTPException(
                 status_code=422,
-                detail=f"Record at index {idx} failed validation: {str(e)}",
+                detail=f"Record at index {idx} failed validation: {clean_err}",
             )
 
     return historical_service.ingest_observations(
         observations=valid_obs,
-        provenance=payload.provenance or "MANUAL_INGESTION",
+        provenance=clean_prov,
     )

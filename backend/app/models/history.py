@@ -24,6 +24,7 @@ class HistoricalSummary(BaseModel):
     active_platforms: List[str] = Field(default_factory=list, description="Active spacecraft platforms observed")
     data_source: str = Field(description="Source identifier (e.g. NASA_FIRMS_ARCHIVE, DEMO_HISTORICAL_FIXTURE)")
     is_live: bool = Field(description="True if real NASA telemetry archive, False if demo fixture")
+    is_synthetic: bool = Field(default=False, description="True if any observations in response are synthetic fixtures")
     provenance: str = Field(description="Audit trail of data origin and pipeline version")
 
 
@@ -49,6 +50,7 @@ class HistoricalTrendsResponse(BaseModel):
     trends: List[HistoricalTrendPoint] = Field(default_factory=list)
     data_source: str
     is_live: bool
+    is_synthetic: bool = Field(default=False, description="True if any observations in response are synthetic fixtures")
     provenance: str
     fetched_at: str
 
@@ -71,11 +73,18 @@ class HistoricalCalendarResponse(BaseModel):
     days: List[HistoricalCalendarDay] = Field(default_factory=list)
     total_days: int
     max_daily_events: int
-    max_daily_frp_mw: float
+    max_daily_modis_frp_mw: float = Field(default=0.0, description="Peak daily cumulative MODIS FRP (MW)")
+    max_daily_viirs_frp_mw: float = Field(default=0.0, description="Peak daily cumulative VIIRS FRP (MW)")
+    peak_single_frp_mw: float = Field(default=0.0, description="Peak single-observation FRP (MW) observed")
+    max_daily_frp_mw: Optional[float] = Field(
+        default=None,
+        description="Deprecated: Use max_daily_modis_frp_mw and max_daily_viirs_frp_mw. Never cross-sensor summed."
+    )
     date_range_start: str
     date_range_end: str
     data_source: str
     is_live: bool
+    is_synthetic: bool = Field(default=False, description="True if any observations in response are synthetic fixtures")
     provenance: str
     fetched_at: str
 
@@ -95,6 +104,7 @@ class HistoricalRegionsResponse(BaseModel):
     total_events: int
     data_source: str
     is_live: bool
+    is_synthetic: bool = Field(default=False, description="True if any observations in response are synthetic fixtures")
     provenance: str
     fetched_at: str
 
@@ -120,6 +130,7 @@ class HistoricalSensorsResponse(BaseModel):
     viirs_observation_count: int
     data_source: str
     is_live: bool
+    is_synthetic: bool = Field(default=False, description="True if any observations in response are synthetic fixtures")
     provenance: str
     fetched_at: str
 
@@ -132,6 +143,7 @@ class HistoricalEventsResponse(BaseModel):
     total_pages: int
     data_source: str
     is_live: bool
+    is_synthetic: bool = Field(default=False, description="True if any observations in response are synthetic fixtures")
     provenance: str
     fetched_at: str
 

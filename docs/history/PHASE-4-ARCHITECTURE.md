@@ -1,44 +1,47 @@
-# AgniNet — Phase 4 Historical Fire Analytics Architecture
+# AgniNet — Phase 4 & 4.1 Historical Fire Analytics Architecture
 
-**Document Version:** 1.0.0  
-**Status:** IMPLEMENTED & PRODUCTION READY  
-**Classification:** Core System Architecture & Data Pipeline  
+**Document Version:** 1.1.0  
+**Status:** IMPLEMENTED & PRODUCTION HARDENED  
+**Classification:** Core System Architecture, Persistence & Security Specification  
 **Date:** November 2026  
 
 ---
 
 ## 1. Executive Summary
 
-Phase 4 introduces persistent historical active-fire analytics and temporal intelligence to the AgniNet platform. Built atop the validated Phase 2 ingestion pipeline and frozen Phase 3.1.1 cross-sensor harmonization engine (`AgniNet-Harmonize-v1.1.1`), Phase 4 delivers multi-month and multi-year fire regime analysis, daily/weekly/monthly activity trends, calendar thermal intensity indices, regional biome comparisons, and spacecraft constellation breakdowns.
+Phase 4 & Phase 4.1 establish a production-grade, scientifically hardened historical fire analytics platform for AgniNet. Integrating the frozen Phase 3.1.1 cross-sensor harmonization engine (`AgniNet-Harmonize-v1.1.1`), the system provides multi-temporal archive ingestion, daily/weekly/monthly activity trends, a dimensionless sensor-normalized fire severity calendar, regional fire regime rollups, and paginated event browsing.
 
-A primary architectural mandate of Phase 4 is **scientific integrity**: observational data from distinct sensor platforms (MODIS Terra/Aqua at 1 km resolution and VIIRS Suomi-NPP/NOAA-20/NOAA-21 at 375 m resolution) are persisted with high fidelity and analyzed with strict physical separation of Fire Radiative Power (FRP).
+Phase 4.1 hardens the platform for production deployment:
+1. **Scientific Integrity:** Replaces cross-sensor FRP summation in calendar analytics with a dimensionless, sensor-normalized thermal severity index.
+2. **Production Persistence:** Adds configurable database storage via `DATABASE_PATH`, documented Render Persistent Disk architecture (`/var/data`), and automated directory creation for absolute mount paths.
+3. **Provenance Integrity:** Implements a strict 4-state provenance classifier (`EMPTY_ARCHIVE`, `DEMO_HISTORICAL_ARCHIVE`, `NASA_FIRMS_LIVE_ARCHIVE`, `MIXED_HISTORICAL_ARCHIVE`) with explicit `is_synthetic` flags.
+4. **Ingestion Security:** Protects write operations on `/api/history/ingest` with timing-safe API-key authentication, batch throttling (max 1,000 records), radiometric bounds validation, and secret masking.
 
 ---
 
 ## 2. Architectural Overview
 
-The Phase 4 architecture follows a clean 4-tier domain-driven design:
-
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │                   Frontend Presentation Tier (Next.js)                 │
 │  - /historical: Multi-tab interactive dashboard (Trends, Biomes, FRP)  │
-│  - /calendar: Normalized thermal severity calendar heatmap matrix      │
+│  - /calendar: Dimensionless thermal severity calendar heatmap matrix   │
 └───────────────────────────────────┬────────────────────────────────────┘
-                                    │ HTTP / REST
+                                    │ HTTP / REST (JSON)
 ┌───────────────────────────────────▼────────────────────────────────────┐
 │                  API & Routing Tier (FastAPI Routers)                  │
 │  - backend/app/routers/history.py (7 REST Endpoints)                   │
-│  - Query parameter validation, ISO dates, Bounding Box constraints     │
+│  - Security: verify_ingestion_auth (X-Ingestion-Key / Bearer)          │
+│  - Validation: ISO dates, Bounding Box constraints, batch throttling   │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │ Python Domain Calls
 ┌───────────────────────────────────▼────────────────────────────────────┐
 │                    Domain Services & Analytics Tier                    │
 │  - backend/app/services/historical_service.py                          │
-│    - Query orchestration, temporal binning (day/week/month)            │
+│    - Provenance State Machine (_determine_provenance)                  │
+│    - Dimensionless Sensor-Normalized Calendar Index (0-100)            │
 │    - HarmonizationEngine invocation (AgniNet-Harmonize-v1.1.1)         │
 │    - Biome spatial bounding box classification                         │
-│    - Calendar intensity index normalization (0 - 100)                  │
 │  - backend/app/services/historical_fixtures.py (180-day baseline)      │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │ SQL Queries (WAL Mode)
@@ -46,130 +49,94 @@ The Phase 4 architecture follows a clean 4-tier domain-driven design:
 │                   Storage & Repository Tier (SQLite)                   │
 │  - backend/app/db/historical_repo.py (HistoricalRepository)            │
 │  - backend/app/db/database.py (DatabaseManager, connection pool)       │
-│  - Data Store: backend/data/agninet_historical.db                      │
+│  - Mount Path: Configured via DATABASE_PATH (e.g. /var/data/...)       │
 │  - Secondary B-tree indexes on date, region, sensor, and coordinates   │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 3. Storage Layer & Persistence Strategy
+## 3. Storage Layer & Production Deployment Persistence
 
-### 3.1 Choice of Persistent Store
-For the single-instance deployment and local development runtime, **SQLite** was chosen for persistence rather than an in-memory dictionary or external database cluster:
-- **Zero Ops Overhead:** No external daemon or network dependency required.
-- **ACID Compliance & Concurrency:** Configured with `WAL` (Write-Ahead Logging) mode, enabling concurrent non-blocking reads while handling batch write transactions.
-- **Portability:** Self-contained database file located at `backend/data/agninet_historical.db`, excluded from git tracking via `.gitignore`.
-- **PostGIS Migration Readiness:** The repository layer (`HistoricalRepository`) encapsulates all SQL dialect specifics, ensuring clean migration to PostgreSQL/PostGIS in future multi-node deployments.
+### 3.1 Choice of Persistent Store & Portability
+- **Engine:** SQLite 3 in WAL (`Write-Ahead Logging`) mode with `synchronous = NORMAL`.
+- **Concurrency:** Enables non-blocking concurrent reads while handling atomic write batches.
+- **Portability:** Database interaction is strictly mediated through `HistoricalRepository`, isolating SQL dialect specifics to simplify future migration to PostgreSQL / PostGIS.
+- **Version Control Safety:** SQLite database files (`*.db`, `*.sqlite`, `*.sqlite3`) are strictly ignored via `.gitignore` and are never committed to the repository.
 
-### 3.2 Database Schema
-The schema is automatically initialized on application startup via `DatabaseManager`:
+### 3.2 Production Deployment Persistence on Render
+> [!WARNING]
+> Standard container deployments (Render Web Services, Fly.io, Heroku) run in ephemeral container filesystems. Any database written to the default relative path will be wiped on every redeploy or container restart!
 
-```sql
-CREATE TABLE IF NOT EXISTS historical_observations (
-    id TEXT PRIMARY KEY,
-    source TEXT NOT NULL,
-    latitude REAL NOT NULL,
-    longitude REAL NOT NULL,
-    brightness REAL,
-    scan REAL,
-    track REAL,
-    acq_date TEXT NOT NULL,
-    acq_time TEXT,
-    satellite TEXT NOT NULL,
-    instrument TEXT NOT NULL,
-    confidence TEXT,
-    version TEXT,
-    bright_t31 REAL,
-    frp REAL,
-    daynight TEXT,
-    region TEXT,
-    created_at TEXT DEFAULT (datetime('now'))
-);
+To ensure durable persistence in production:
+1. **Provision a Render Persistent Disk:**
+   - Disk Name: `agninet-data`
+   - Mount Path: `/var/data`
+   - Size: Minimum 1 GB
+2. **Configure Environment Variables:**
+   - `DATABASE_PATH=/var/data/agninet_historical.db`
+   - `INGESTION_API_KEY=<random-secret-token>`
+3. **Directory Creation Guarantee:**
+   When `init_db()` is called on server startup, it calls `os.makedirs(os.path.dirname(target_path), exist_ok=True)`. This automatically creates any missing parent directories (`/var/data`) on an attached mount point before opening the database connection.
 
-CREATE INDEX IF NOT EXISTS idx_hist_obs_date ON historical_observations (acq_date);
-CREATE INDEX IF NOT EXISTS idx_hist_obs_region ON historical_observations (region);
-CREATE INDEX IF NOT EXISTS idx_hist_obs_sensor ON historical_observations (instrument, satellite);
-CREATE INDEX IF NOT EXISTS idx_hist_obs_geo ON historical_observations (latitude, longitude);
-CREATE INDEX IF NOT EXISTS idx_hist_obs_frp ON historical_observations (frp);
+---
 
-CREATE TABLE IF NOT EXISTS ingestion_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    source TEXT NOT NULL,
-    batch_size INTEGER NOT NULL,
-    inserted_count INTEGER NOT NULL,
-    status TEXT NOT NULL,
-    message TEXT,
-    created_at TEXT DEFAULT (datetime('now'))
-);
+## 4. Ingestion Security & Bounds Validation
+
+The `/api/history/ingest` endpoint is protected against unauthorized public writes and malformed inputs:
+
+1. **Authentication Layer:**
+   - Requires `X-Ingestion-Key` header or `Authorization: Bearer <key>`.
+   - Verified via `secrets.compare_digest()` for timing-attack immunity.
+   - If `INGESTION_API_KEY` is unset on the server, write access is locked by default (HTTP 403 Forbidden).
+   - Missing or invalid credentials return HTTP 401 Unauthorized.
+2. **Batch Throttling:**
+   - Payloads with $> 1,000$ observations (configurable via `MAX_INGESTION_BATCH_SIZE`) are rejected with HTTP 400 Bad Request.
+3. **Radiometric & Geographic Validation:**
+   - Latitude: $-90.0 \le \text{lat} \le 90.0$
+   - Longitude: $-180.0 \le \text{lon} \le 180.0$
+   - FRP: $\ge 0.0\text{ MW}$
+   - Brightness: $100.0\text{ K} \le T_b \le 600.0\text{ K}$
+   - Acquisition Date: Strict Gregorian calendar validation (rejects invalid dates like Feb 30).
+   - Acquisition Time: Strict 24-hour UTC format `00:00` to `23:59`.
+4. **Secret Masking:**
+   - Exception handlers intercept and sanitize error strings to ensure API keys, internal tokens, or configuration paths are never leaked in HTTP responses or log output.
+
+---
+
+## 5. Provenance Classification Architecture
+
+The `HistoricalService._determine_provenance()` method applies a 4-state classifier to eliminate ambiguity:
+
+```
+                  ┌──────────────────────┐
+                  │ Evaluate Query Obs   │
+                  └──────────┬───────────┘
+                             │
+            ┌────────────────┼────────────────┐
+            ▼                ▼                ▼
+     [len(obs) == 0]   [All o.is_live]   [All not is_live]
+            │                │                │
+            ▼                ▼                ▼
+     EMPTY_ARCHIVE    NASA_FIRMS_LIVE   DEMO_HISTORICAL
+     (is_live: false  (is_live: true    (is_live: false
+      synth: false)    synth: false)     synth: true)
+                             │
+                             ▼ [Both live & demo present]
+                      MIXED_HISTORICAL_ARCHIVE
+                      (is_live: false, synth: true)
 ```
 
-### 3.3 Idempotent Ingestion & Deduplication
-To prevent duplicate records when re-ingesting overlapping historical archives or running batch loads, the ingestion pipeline implements idempotent upserts:
-```sql
-INSERT INTO historical_observations (
-    id, source, latitude, longitude, brightness, scan, track,
-    acq_date, acq_time, satellite, instrument, confidence,
-    version, bright_t31, frp, daynight, region
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(id) DO UPDATE SET
-    brightness = excluded.brightness,
-    confidence = excluded.confidence,
-    frp = excluded.frp,
-    region = excluded.region;
-```
-Observation IDs adhere to deterministic naming conventions:
-- Natural upstream ID if unique (e.g. `HIST_MODIS_...`, `HIST_VIIRS_...`), or
-- Derived SHA-256 hash of `(source, latitude, longitude, acq_date, acq_time, satellite)`.
+Synthetic fixtures are permanently labeled and will never be represented as authenticated NASA satellite telemetry.
 
 ---
 
-## 4. Ingestion & Baseline Data Architecture
+## 6. Dimensionless Calendar Normalization Architecture
 
-### 4.1 NASA FIRMS NRT vs. Historical Archive Distinction
-- **NASA FIRMS NRT (Near Real-Time):** Exposes rolling 1-to-10 day rolling windows. Queries outside this ephemeral window cannot be fetched via the NRT `MAP_KEY` endpoints.
-- **NASA FIRMS Archive:** Requires historical bulk distribution or archive subscription services.
-- **AgniNet Baseline Fixtures:** When the persistent database is unpopulated or missing historical depth, `HistoricalService` seeds a deterministic, scientifically modeled 180-day baseline archive (June 1 – November 14, 2026) containing 4,161 observations across 7 global biomes.
-- **Provenance Transparency:** Every response payload explicitly carries a `data_source` tag (e.g. `DEMO_HISTORICAL_ARCHIVE` or `FIRMS_ARCHIVE`) and `is_synthetic` flag so client consumers never confuse modeled baselines with live real-time telemetry.
+To eliminate the physical error of summing MODIS and VIIRS FRP across different wavelengths ($4.0\,\mu\text{m}$ vs $3.74/4.05\,\mu\text{m}$) and footprints ($1\text{ km}$ vs $375\text{ m}$), the calendar matrix uses a sensor-normalized dimensionless formula:
 
-### 4.2 Regional Biome Classification
-Incoming observations are spatially classified into key global fire regimes via bounding box intersections:
-1. **Amazon Basin** (`[-15.0, -75.0, 5.0, -45.0]`): Tropical rainforest and deforestation frontier.
-2. **Northern Australia Savanna** (`[-25.0, 115.0, -10.0, 150.0]`): Savanna and woodland pre-monsoon dry season burning.
-3. **California & Pacific NW** (`[32.0, -125.0, 49.0, -114.0]`): Mediterranean chaparral, conifer forest fire regime.
-4. **Alberta & Canadian Taiga** (`[50.0, -130.0, 65.0, -110.0]`): Boreal peat and crown forest fires.
-5. **Pantanal Wetland** (`[-22.0, -58.0, -16.0, -55.0]`): South American wetland ecosystem.
-6. **Mediterranean Basin** (`[35.0, -10.0, 45.0, 40.0]`): S. Europe and N. Africa dry summer fires.
-7. **Siberian Boreal** (`[55.0, 80.0, 70.0, 140.0]`): High-latitude Siberian taiga.
-8. **Global / Other**: hot spots outside designated focal biomes.
-
----
-
-## 5. Analytics & Harmonization Pipeline
-
-### 5.1 Event Harmonization on Historical Data
-Raw satellite detections often suffer from double counting when Terra, Aqua, NOAA-20, NOAA-21, and Suomi-NPP observe the same burning event. Rather than simply plotting unharmonized hotspot counts, `HistoricalService` dynamically executes `HarmonizationEngine(AgniNet-Harmonize-v1.1.1)` on filtered observation clusters:
-- Evaluates spatial distance using exact Haversine formulas with antimeridian wrap-around.
-- Evaluates temporal separation across UTC midnight boundaries.
-- Produces unified events classified as `MATCHED`, `MODIS_ONLY`, `VIIRS_ONLY`, or `AMBIGUOUS`.
-- Prevents double-counting in event trend metrics.
-
-### 5.2 Strict Sensor Separation for Fire Radiative Power (FRP)
-A fundamental tenet of AgniNet is that **MODIS FRP (MW) and VIIRS FRP (MW) must NEVER be summed or blended together**:
-- MODIS computes FRP from the $4.0\,\mu\text{m}$ mid-infrared band over a $1\text{ km}$ footprint.
-- VIIRS computes FRP from the $3.74/4.05\,\mu\text{m}$ dual-gain bands over a $375\text{ m}$ footprint.
-- Due to the cubic and quartic temperature dependence of sub-pixel radiance and unequal pixel point-spread functions, summing them is mathematically invalid and physically meaningless.
-- **Phase 4 Enforcement:** All API response contracts, repository aggregations, and frontend visualizations maintain strictly segregated fields (`modis_frp_mw` and `viirs_frp_mw`).
-
----
-
-## 6. Frontend Integration
-
-1. **`/historical` Dashboard (`src/app/historical/page.tsx`):**
-   - KPI metrics strip displaying Total Events, Total Hotspots, Dual-Matched confirmation rate, Segregated MODIS FRP, Segregated VIIRS FRP, and Peak Day.
-   - 5 dedicated views: Temporal Activity Trends, Radiative Flux (FRP), Regional Biome Comparison, Spacecraft Constellation Breakdown, and Paginated Unified Events.
-   - Quick presets (`30D`, `90D`, `SEASON_2026`, `ALL`) and custom date ranges.
-2. **`/calendar` Heatmap (`src/app/calendar/page.tsx`):**
-   - Normalized daily severity index: $\text{Index} = \min\left(100, \text{round}\left(100 \times \frac{\text{day\_hotspots}}{\max(\text{period\_hotspots})}\right)\right)$.
-   - Dynamic cell selection revealing sensor breakdown, dominant platform, and separated FRP.
-   - Educational panels for diurnal fire rhythm and hemispheric burning cycles.
+1. Calculate period peak daily cumulative output per sensor: $M_{\max}$ and $V_{\max}$.
+2. Normalize each day's cumulative output into a dimensionless ratio: $\hat{M}_d = M_d / M_{\max}$ and $\hat{V}_d = V_d / V_{\max}$.
+3. Average the active dimensionless ratios: $S_d = (\hat{M}_d + \hat{V}_d) / 2.0$.
+4. Scale to integer index: $\text{intensity\_index}_d = \min(100, \text{round}(100 \times S_d))$.
+5. Preserve separate $M_d$ and $V_d$ fields in the API payload without cross-sensor addition.

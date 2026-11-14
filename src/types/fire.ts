@@ -247,6 +247,7 @@ export interface HistoricalSummary {
   active_platforms: string[];
   data_source: string;
   is_live: boolean;
+  is_synthetic?: boolean;
   provenance: string;
 }
 
@@ -269,6 +270,7 @@ export interface HistoricalTrendsResponse {
   trends: HistoricalTrendPoint[];
   data_source: string;
   is_live: boolean;
+  is_synthetic?: boolean;
   provenance: string;
   fetched_at: string;
 }
@@ -290,11 +292,15 @@ export interface HistoricalCalendarResponse {
   days: HistoricalCalendarDay[];
   total_days: number;
   max_daily_events: number;
-  max_daily_frp_mw: number;
+  max_daily_modis_frp_mw?: number;
+  max_daily_viirs_frp_mw?: number;
+  peak_single_frp_mw?: number;
+  max_daily_frp_mw?: number | null;
   date_range_start: string;
   date_range_end: string;
   data_source: string;
   is_live: boolean;
+  is_synthetic?: boolean;
   provenance: string;
   fetched_at: string;
 }
@@ -314,6 +320,7 @@ export interface HistoricalRegionsResponse {
   total_events: number;
   data_source: string;
   is_live: boolean;
+  is_synthetic?: boolean;
   provenance: string;
   fetched_at: string;
 }
@@ -339,6 +346,7 @@ export interface HistoricalSensorsResponse {
   viirs_observation_count: number;
   data_source: string;
   is_live: boolean;
+  is_synthetic?: boolean;
   provenance: string;
   fetched_at: string;
 }
@@ -351,6 +359,7 @@ export interface HistoricalEventsResponse {
   total_pages: number;
   data_source: string;
   is_live: boolean;
+  is_synthetic?: boolean;
   provenance: string;
   fetched_at: string;
 }

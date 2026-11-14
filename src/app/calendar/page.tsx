@@ -115,8 +115,17 @@ export default function CalendarPage() {
         <div className="flex items-center gap-3">
           {calendarData && (
             <div className="flex items-center gap-2 text-xs text-slate-400">
-              <Database className="w-3.5 h-3.5 text-cyan-400" />
-              <span className="font-mono text-cyan-300">
+              <span
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded font-mono text-[11px] ${
+                  calendarData.is_live
+                    ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                    : calendarData.data_source === "MIXED_HISTORICAL_ARCHIVE"
+                    ? "bg-purple-500/10 text-purple-400 border border-purple-500/20"
+                    : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                }`}
+                title={calendarData.provenance}
+              >
+                <Database className="w-3 h-3" />
                 {calendarData.data_source}
               </span>
               <span className="text-slate-600">&bull;</span>

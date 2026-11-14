@@ -1,7 +1,7 @@
-# AgniNet — Phase 4 Historical Analytics REST API Reference
+# AgniNet — Phase 4 & 4.1 Historical Analytics REST API Reference
 
-**Document Version:** 1.0.0  
-**Classification:** REST API Reference & Integration Contract  
+**Document Version:** 1.1.0  
+**Classification:** REST API Reference & Security Contract  
 **Base URL:** `/api/history`  
 **Protocol:** HTTP/1.1 JSON (UTF-8)  
 **Date:** November 2026  
@@ -10,7 +10,7 @@
 
 ## 1. Overview
 
-The Historical Fire Analytics API provides high-efficiency endpoints for querying persisted fire observations, computing temporal activity trends, generating severity calendar heatmaps, performing regional biome aggregations, breaking down satellite constellation distributions, and ingesting archive batches.
+The Historical Fire Analytics API provides high-efficiency endpoints for querying persisted fire observations, computing temporal activity trends, generating dimensionless severity calendar heatmaps, performing regional biome aggregations, breaking down satellite constellation distributions, and ingesting archive batches securely.
 
 All responses adhere strictly to ISO 8601 timestamps (`YYYY-MM-DD`, `HH:MM`, `YYYY-MM-DDTHH:MM:SSZ`), WGS84 coordinates, and enforce scientific separation of MODIS and VIIRS Fire Radiative Power (FRP).
 
@@ -62,10 +62,11 @@ Retrieves top-level historical KPI metrics across the requested temporal and spa
   "peak_day_events": 88,
   "date_range_start": "2026-06-01",
   "date_range_end": "2026-11-14",
-  "active_platforms": ["Terra", "Aqua", "Suomi-NPP", "NOAA-20", "NOAA-21"],
+  "active_platforms": ["Aqua", "NOAA-20", "NOAA-21", "Suomi-NPP", "Terra"],
   "data_source": "DEMO_HISTORICAL_ARCHIVE",
   "is_live": false,
-  "provenance": "DEMO_HISTORICAL_ARCHIVE"
+  "is_synthetic": true,
+  "provenance": "DEMO_HISTORICAL_ARCHIVE (100% Modeled Synthetic Fixtures, 4161 records)"
 }
 ```
 
@@ -102,7 +103,8 @@ Computes time-series trend buckets aggregated by day, week, or month.
   ],
   "data_source": "DEMO_HISTORICAL_ARCHIVE",
   "is_live": false,
-  "provenance": "DEMO_HISTORICAL_ARCHIVE",
+  "is_synthetic": true,
+  "provenance": "DEMO_HISTORICAL_ARCHIVE (100% Modeled Synthetic Fixtures, 4161 records)",
   "fetched_at": "2026-11-14T07:00:00.000Z"
 }
 ```
@@ -110,7 +112,12 @@ Computes time-series trend buckets aggregated by day, week, or month.
 ---
 
 ### 3.3 `GET /api/history/calendar`
-Generates a complete daily active-fire matrix with normalized severity indices suitable for calendar heatmap rendering.
+Generates a complete daily active-fire matrix with normalized dimensionless severity indices.
+
+#### Scientific Normalization Formula
+The `intensity_index` ($0 - 100$) is computed strictly via dimensionless scaling against each sensor's period maximum:
+$$\hat{M}_d = \frac{M_d}{M_{\max}}, \quad \hat{V}_d = \frac{V_d}{V_{\max}}, \quad S_d = \frac{\hat{M}_d + \hat{V}_d}{2}$$
+At no point are MODIS and VIIRS Megawatts added together.
 
 #### Response Schema (`HistoricalCalendarResponse`)
 ```json
@@ -131,16 +138,18 @@ Generates a complete daily active-fire matrix with normalized severity indices s
   ],
   "total_days": 92,
   "max_daily_events": 62,
-  "max_daily_frp_mw": 2450.6,
+  "max_daily_modis_frp_mw": 1140.2,
+  "max_daily_viirs_frp_mw": 2450.6,
+  "peak_single_frp_mw": 482.0,
   "date_range_start": "2026-08-15",
   "date_range_end": "2026-11-14",
   "data_source": "DEMO_HISTORICAL_ARCHIVE",
   "is_live": false,
-  "provenance": "DEMO_HISTORICAL_ARCHIVE",
+  "is_synthetic": true,
+  "provenance": "DEMO_HISTORICAL_ARCHIVE (100% Modeled Synthetic Fixtures, 4161 records)",
   "fetched_at": "2026-11-14T07:00:00.000Z"
 }
 ```
-*Note: `intensity_index` is normalized $0 - 100$ relative to `max_daily_events` in the query range.*
 
 ---
 
@@ -164,7 +173,8 @@ Aggregates activity by geographical biomes and fire regimes.
   "total_events": 2845,
   "data_source": "DEMO_HISTORICAL_ARCHIVE",
   "is_live": false,
-  "provenance": "DEMO_HISTORICAL_ARCHIVE",
+  "is_synthetic": true,
+  "provenance": "DEMO_HISTORICAL_ARCHIVE (100% Modeled Synthetic Fixtures, 4161 records)",
   "fetched_at": "2026-11-14T07:00:00.000Z"
 }
 ```
@@ -187,13 +197,18 @@ Provides a breakdown across satellite platforms and sensor instruments (Terra, A
       "daytime_count": 846,
       "nighttime_count": 564,
       "total_frp_mw": 34968.0,
-      "mean_frp_mw": 24.8
+      "mean_frp_mw": 24.8,
+      "max_frp_mw": 482.0,
+      "average_confidence": 88.5
     }
   ],
   "total_observations": 4161,
+  "modis_observation_count": 1240,
+  "viirs_observation_count": 2921,
   "data_source": "DEMO_HISTORICAL_ARCHIVE",
   "is_live": false,
-  "provenance": "DEMO_HISTORICAL_ARCHIVE",
+  "is_synthetic": true,
+  "provenance": "DEMO_HISTORICAL_ARCHIVE (100% Modeled Synthetic Fixtures, 4161 records)",
   "fetched_at": "2026-11-14T07:00:00.000Z"
 }
 ```
@@ -208,7 +223,7 @@ Returns paginated, cross-sensor unified events derived from historical observati
 |:---|:---|:---|:---|
 | `classification` | string | `None` | `MATCHED`, `MODIS_ONLY`, `VIIRS_ONLY`, `AMBIGUOUS`. |
 | `page` | integer | `1` | Page number ($\ge 1$). |
-| `limit` | integer | `50` | Records per page ($1 \le \text{limit} \le 500$). |
+| `page_size` | integer | `25` | Records per page ($1 \le \text{page\_size} \le 200$). |
 
 #### Response Schema (`HistoricalEventsResponse`)
 ```json
@@ -234,13 +249,14 @@ Returns paginated, cross-sensor unified events derived from historical observati
       "algorithm_version": "AgniNet-Harmonize-v1.1.1"
     }
   ],
-  "total_count": 854,
+  "total_events": 854,
   "page": 1,
-  "limit": 50,
-  "total_pages": 18,
+  "page_size": 25,
+  "total_pages": 35,
   "data_source": "DEMO_HISTORICAL_ARCHIVE",
   "is_live": false,
-  "provenance": "DEMO_HISTORICAL_ARCHIVE",
+  "is_synthetic": true,
+  "provenance": "DEMO_HISTORICAL_ARCHIVE (100% Modeled Synthetic Fixtures, 4161 records)",
   "fetched_at": "2026-11-14T07:00:00.000Z"
 }
 ```
@@ -248,31 +264,40 @@ Returns paginated, cross-sensor unified events derived from historical observati
 ---
 
 ### 3.7 `POST /api/history/ingest`
-Idempotently inserts or updates a batch of historical observations into the persistent database.
+Protected endpoint for idempotently inserting or updating historical observations in the persistent database.
+
+#### Security & Headers
+| Header | Required | Description |
+|:---|:---|:---|
+| `X-Ingestion-Key` | Yes | Token matching server `INGESTION_API_KEY`. |
+| `Authorization` | Alternative | `Bearer <token>` format matching `INGESTION_API_KEY`. |
+
+- **HTTP 403 Forbidden:** Returned when `INGESTION_API_KEY` is unset on the server.
+- **HTTP 401 Unauthorized:** Returned when credential token is missing or invalid.
+- **HTTP 400 Bad Request:** Returned when payload has 0 records or $> 1,000$ records (`MAX_INGESTION_BATCH_SIZE`).
+- **HTTP 422 Unprocessable Entity:** Returned when coordinate or date bounds are violated.
 
 #### Request Schema (`HistoricalIngestionRequest`)
 ```json
 {
-  "source": "NASA_FIRMS_ARCHIVE_BATCH_01",
+  "provenance": "NASA_FIRMS_ARCHIVE_BATCH_01",
   "observations": [
     {
       "id": "HIST_OBS_20260901_001",
-      "source": "NASA_FIRMS_ARCHIVE",
       "latitude": -12.45,
       "longitude": -55.80,
-      "brightness": 328.4,
-      "scan": 1.1,
-      "track": 1.0,
-      "acq_date": "2026-09-01",
-      "acq_time": "17:30",
+      "acquisition_date": "2026-09-01",
+      "acquisition_time_utc": "17:30",
       "satellite": "Aqua",
       "instrument": "MODIS",
+      "sensor_source": "MODIS_NRT",
       "confidence": "85",
-      "version": "6.1NRT",
-      "bright_t31": 298.5,
-      "frp": 45.2,
-      "daynight": "D",
-      "region": "Amazon Basin"
+      "frp_mw": 45.2,
+      "brightness_kelvin": 328.4,
+      "scan_angle": 1.1,
+      "track_km": 1.0,
+      "day_night": "D",
+      "region": "Amazon Basin, Brazil"
     }
   ]
 }
@@ -281,11 +306,12 @@ Idempotently inserts or updates a batch of historical observations into the pers
 #### Response Schema (`HistoricalIngestionResponse`)
 ```json
 {
-  "source": "NASA_FIRMS_ARCHIVE_BATCH_01",
-  "batch_size": 1,
-  "inserted_count": 1,
   "status": "SUCCESS",
-  "message": "Successfully upserted 1 historical observations into SQLite archive."
+  "records_received": 1,
+  "records_inserted": 1,
+  "records_updated": 0,
+  "timestamp_utc": "2026-11-14T07:25:00.000Z",
+  "provenance": "NASA_FIRMS_ARCHIVE_BATCH_01"
 }
 ```
-If duplicate IDs are submitted in subsequent requests, records are updated in place with zero duplicate row creation (`inserted_count: 1`, total database count unchanged).
+If duplicate IDs are submitted in subsequent requests, records are updated in place with zero duplicate row creation (`records_inserted: 0`, `records_updated: 1`, total database row count unchanged).

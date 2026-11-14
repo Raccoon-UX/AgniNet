@@ -226,7 +226,16 @@ export default function HistoricalAnalysisPage() {
 
           {summary && (
             <div className="flex items-center gap-2 font-mono text-[11px] text-slate-400">
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <span
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded ${
+                  summary.is_live
+                    ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                    : summary.data_source === "MIXED_HISTORICAL_ARCHIVE"
+                    ? "bg-purple-500/10 text-purple-400 border border-purple-500/20"
+                    : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                }`}
+                title={summary.provenance}
+              >
                 <Database className="w-3 h-3" />
                 {summary.data_source}
               </span>
