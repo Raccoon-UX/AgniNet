@@ -21,6 +21,19 @@ export function formatCoordinates(lat: number, lon: number): string {
   return `${Math.abs(lat).toFixed(4)}° ${latDir}, ${Math.abs(lon).toFixed(4)}° ${lonDir}`;
 }
 
+export function formatDMS(lat: number, lon: number): string {
+  const toDMS = (deg: number, isLat: boolean) => {
+    const dir = isLat ? (deg >= 0 ? "N" : "S") : deg >= 0 ? "E" : "W";
+    const absDeg = Math.abs(deg);
+    const d = Math.floor(absDeg);
+    const minFloat = (absDeg - d) * 60;
+    const m = Math.floor(minFloat);
+    const s = ((minFloat - m) * 60).toFixed(1);
+    return `${d}° ${m}' ${s}" ${dir}`;
+  };
+  return `${toDMS(lat, true)}, ${toDMS(lon, false)}`;
+}
+
 export function getFRPColor(frp: number | null | undefined): {
   badge: string;
   glow: string;

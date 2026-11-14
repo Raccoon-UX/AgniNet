@@ -128,30 +128,63 @@ export default function OverviewPage() {
     <div className="space-y-6">
       {/* Platform Section Header */}
       <PageHeader
-        badge="Earth Observation / Radiometric Fire Intelligence"
-        title="Active Satellite Fire Telemetry"
-        description="Near real-time fusion of NASA MODIS (Terra/Aqua 1km) and VIIRS (Suomi-NPP/NOAA-20/21 375m) active fire radiometry, automated spatial harmonization, and radiative power quantification."
+        badge="NASA Fire Monitoring Platform"
+        title="Active Satellite Fire Intelligence"
+        description="Live NASA MODIS (1 km) and VIIRS (375 m) fire observations with cross-sensor harmonization and radiative analysis."
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Time Window Selector */}
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-white border border-slate-300 text-xs shadow-xs">
+              <Calendar className="w-3.5 h-3.5 text-slate-500" />
+              <span className="text-[10px] uppercase font-semibold text-slate-500 hidden sm:inline">Window:</span>
+              <select
+                value={selectedDayRange}
+                onChange={(e) => setSelectedDayRange(Number(e.target.value))}
+                className="bg-transparent text-slate-800 text-xs font-medium focus:outline-none cursor-pointer"
+              >
+                <option value={1}>Last 24 Hours (1 Day)</option>
+                <option value={2}>Past 48 Hours (2 Days)</option>
+                <option value={5}>Past 5 Days</option>
+                <option value={7}>Past 7 Days</option>
+              </select>
+            </div>
+
+            {/* Region Preset Selector */}
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-white border border-slate-300 text-xs shadow-xs">
+              <Filter className="w-3.5 h-3.5 text-slate-500" />
+              <span className="text-[10px] uppercase font-semibold text-slate-500 hidden sm:inline">Region:</span>
+              <select
+                value={selectedRegionPreset}
+                onChange={(e) => setSelectedRegionPreset(e.target.value)}
+                className="bg-transparent text-slate-800 text-xs font-medium focus:outline-none cursor-pointer"
+              >
+                <option value="all">Global</option>
+                <option value="us">Western US</option>
+                <option value="amazon">Amazon Basin</option>
+                <option value="australia">Northern Australia</option>
+              </select>
+            </div>
+
             <button
               onClick={() => loadData(true)}
               disabled={refreshing}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 shadow-sm transition-colors cursor-pointer disabled:opacity-50"
+              title="Sync telemetry feeds"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 shadow-xs transition-colors cursor-pointer disabled:opacity-50"
             >
               <RefreshCw
                 className={`w-3.5 h-3.5 text-slate-600 ${
                   refreshing ? "animate-spin" : ""
                 }`}
               />
-              <span>{refreshing ? "Syncing..." : "Sync Feeds"}</span>
+              <span className="hidden sm:inline">{refreshing ? "Syncing..." : "Sync"}</span>
             </button>
 
             <Link
               href="/map"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 transition-colors shadow-sm"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 transition-colors shadow-xs"
             >
               <MapPin className="w-3.5 h-3.5 text-orange-400" />
-              <span>Full Map Explorer</span>
+              <span>Full Map</span>
             </Link>
           </div>
         }
@@ -290,29 +323,33 @@ export default function OverviewPage() {
         </div>
       </div>
 
-      {/* Trends & Regional Regimes Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <ActivityTrendChart />
-        <RegionalBreakdown />
+      {/* Recent Observations & Diurnal Trends Grid (Side-by-side as in Reference 1) */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
+        <div className="lg:col-span-3">
+          <HotspotTable
+            hotspots={observations}
+            onSelectHotspot={(hotspot) => {
+              setSelectedHotspot(hotspot);
+              window.scrollTo({ top: 280, behavior: "smooth" });
+            }}
+            isLive={isLive}
+          />
+        </div>
+        <div className="lg:col-span-2 space-y-6">
+          <ActivityTrendChart />
+        </div>
       </div>
 
-      {/* Spacecraft Constellation Status */}
-      <ConstellationStatus
-        detectedSatellites={kpis.detectedSatellites}
-        activeFeedCount={kpis.activeFeedCount}
-        totalFeedCount={kpis.totalFeedCount}
-        isLive={isLive}
-      />
-
-      {/* Detailed Observation Registry Table */}
-      <HotspotTable
-        hotspots={observations}
-        onSelectHotspot={(hotspot) => {
-          setSelectedHotspot(hotspot);
-          window.scrollTo({ top: 340, behavior: "smooth" });
-        }}
-        isLive={isLive}
-      />
+      {/* Spacecraft Constellation Status & Biome Fire Regimes */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <ConstellationStatus
+          detectedSatellites={kpis.detectedSatellites}
+          activeFeedCount={kpis.activeFeedCount}
+          totalFeedCount={kpis.totalFeedCount}
+          isLive={isLive}
+        />
+        <RegionalBreakdown />
+      </div>
     </div>
   );
 }

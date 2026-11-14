@@ -11,6 +11,7 @@ import {
   ZoomIn,
   ZoomOut,
   RotateCcw,
+  ExternalLink,
 } from "lucide-react";
 
 interface FireMapProps {
@@ -24,26 +25,26 @@ interface FireMapProps {
   isLive?: boolean;
 }
 
-type BasemapStyle = "dark" | "light" | "satellite";
+type BasemapStyle = "satellite" | "light" | "dark";
 
 const BASEMAP_TILES: Record<BasemapStyle, { url: string; attribution: string }> = {
-  dark: {
-    url: "https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
-    attribution: "&copy; Esri &bull; HERE, Garmin, OpenStreetMap",
+  satellite: {
+    url: "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    attribution: "&copy; Esri &bull; Earthstar Geographics",
   },
   light: {
     url: "https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
     attribution: "&copy; Esri &bull; HERE, Garmin, OpenStreetMap",
   },
-  satellite: {
-    url: "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    attribution: "&copy; Esri &bull; Earthstar Geographics",
+  dark: {
+    url: "https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+    attribution: "&copy; Esri &bull; HERE, Garmin, OpenStreetMap",
   },
 };
 
 export const FireMap: React.FC<FireMapProps> = ({
   initialCenter = [0, 20],
-  initialZoom = 2,
+  initialZoom = 2.5,
   heightClass = "h-[540px]",
   selectedHotspot,
   onHotspotSelect,
@@ -54,21 +55,22 @@ export const FireMap: React.FC<FireMapProps> = ({
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapInstance = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
+  const selectedReticleRef = useRef<maplibregl.Marker | null>(null);
 
   const [sensorFilter, setSensorFilter] = useState<SensorType>("ALL");
   const [minFrp, setMinFrp] = useState<number>(0);
-  const [basemap, setBasemap] = useState<BasemapStyle>("dark");
+  const [basemap, setBasemap] = useState<BasemapStyle>("satellite");
   const [mapLoaded, setMapLoaded] = useState<boolean>(false);
   const [cursorCoords, setCursorCoords] = useState<{ lng: number; lat: number } | null>(null);
   const [zoomLevel, setZoomLevel] = useState<number>(initialZoom);
 
   const activeHotspots = observations && observations.length > 0 ? observations : DEMO_HOTSPOTS;
 
-  // Initialize MapLibre GL
+  // Initialize MapLibre GL with default Satellite Basemap
   useEffect(() => {
     if (!mapContainer.current || mapInstance.current) return;
 
-    const tileInfo = BASEMAP_TILES["dark"];
+    const tileInfo = BASEMAP_TILES["satellite"];
 
     const map = new maplibregl.Map({
       container: mapContainer.current,
@@ -124,6 +126,16 @@ export const FireMap: React.FC<FireMapProps> = ({
     };
   }, [initialCenter, initialZoom]);
 
+  // Handle container resize automatically
+  useEffect(() => {
+    if (!mapContainer.current || !mapInstance.current) return;
+    const observer = new ResizeObserver(() => {
+      mapInstance.current?.resize();
+    });
+    observer.observe(mapContainer.current);
+    return () => observer.disconnect();
+  }, [mapLoaded]);
+
   // Switch basemap layer dynamically
   useEffect(() => {
     if (!mapInstance.current || !mapLoaded) return;
@@ -172,24 +184,24 @@ export const FireMap: React.FC<FireMapProps> = ({
       else if (frpVal > 100) markerColor = "#ea580c";
 
       // Size calculation
-      const size = frpVal > 300 ? 16 : frpVal > 100 ? 13 : 9;
+      const size = frpVal > 300 ? 15 : frpVal > 100 ? 12 : 9;
 
       const el = document.createElement("div");
       el.className = "cursor-pointer transition-transform hover:scale-125 flex items-center justify-center";
-      el.style.width = `${size}px`;
-      el.style.height = `${size}px`;
+      el.style.width = `${size + 4}px`;
+      el.style.height = `${size + 4}px`;
 
       if (isHarmonized) {
         // Dual-sensor matched glyph: outer ring + solid core
         el.innerHTML = `
-          <div style="width: ${size + 4}px; height: ${size + 4}px; border-radius: 9999px; border: 2px solid #4f46e5; background-color: ${markerColor}; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.5);">
+          <div style="width: ${size + 4}px; height: ${size + 4}px; border-radius: 9999px; border: 2px solid #4f46e5; background-color: ${markerColor}; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 4px rgba(0,0,0,0.6);">
             <div style="width: 3px; height: 3px; border-radius: 9999px; background-color: #ffffff;"></div>
           </div>
         `;
       } else {
         // Standard observation marker: solid crisp circle with white stroke
         el.innerHTML = `
-          <div style="width: ${size}px; height: ${size}px; border-radius: 9999px; background-color: ${markerColor}; border: 1.5px solid #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.4);"></div>
+          <div style="width: ${size}px; height: ${size}px; border-radius: 9999px; background-color: ${markerColor}; border: 1.5px solid #ffffff; box-shadow: 0 1px 4px rgba(0,0,0,0.5);"></div>
         `;
       }
 
@@ -257,6 +269,36 @@ export const FireMap: React.FC<FireMapProps> = ({
     });
   }, [activeHotspots, sensorFilter, minFrp, mapLoaded, onHotspotSelect]);
 
+  // Render Target Reticle Crosshair around Selected Hotspot (Reference 2 Command Center Style)
+  useEffect(() => {
+    if (!mapInstance.current || !mapLoaded) return;
+
+    if (selectedReticleRef.current) {
+      selectedReticleRef.current.remove();
+      selectedReticleRef.current = null;
+    }
+
+    if (!selectedHotspot) return;
+
+    const reticleEl = document.createElement("div");
+    reticleEl.className = "pointer-events-none";
+    reticleEl.innerHTML = `
+      <div style="width: 32px; height: 32px; position: relative; display: flex; align-items: center; justify-content: center;">
+        <div style="position: absolute; top: 0; left: 0; width: 7px; height: 7px; border-top: 2px solid #ffffff; border-left: 2px solid #ffffff;"></div>
+        <div style="position: absolute; top: 0; right: 0; width: 7px; height: 7px; border-top: 2px solid #ffffff; border-right: 2px solid #ffffff;"></div>
+        <div style="position: absolute; bottom: 0; left: 0; width: 7px; height: 7px; border-bottom: 2px solid #ffffff; border-left: 2px solid #ffffff;"></div>
+        <div style="position: absolute; bottom: 0; right: 0; width: 7px; height: 7px; border-bottom: 2px solid #ffffff; border-right: 2px solid #ffffff;"></div>
+        <div style="width: 14px; height: 14px; border: 1.5px solid #ea580c; border-radius: 9999px;"></div>
+      </div>
+    `;
+
+    const reticleMarker = new maplibregl.Marker({ element: reticleEl })
+      .setLngLat([selectedHotspot.longitude, selectedHotspot.latitude])
+      .addTo(mapInstance.current);
+
+    selectedReticleRef.current = reticleMarker;
+  }, [selectedHotspot, mapLoaded]);
+
   // Center on selected hotspot when updated externally
   useEffect(() => {
     if (!mapInstance.current || !selectedHotspot) return;
@@ -309,10 +351,11 @@ export const FireMap: React.FC<FireMapProps> = ({
               onChange={(e) => setMinFrp(Number(e.target.value))}
               className="bg-slate-50 border border-slate-300 rounded px-2 py-0.5 text-xs text-slate-800 font-medium focus:outline-none focus:border-slate-500"
             >
-              <option value={0}>All Radiance (0+ MW)</option>
-              <option value={50}>Moderate (50+ MW)</option>
-              <option value={100}>High (100+ MW)</option>
-              <option value={300}>Severe (300+ MW)</option>
+              <option value={0}>All Radiance (&ge; 0 MW)</option>
+              <option value={10}>Low (&ge; 10 MW)</option>
+              <option value={50}>Moderate (&ge; 50 MW)</option>
+              <option value={100}>High (&ge; 100 MW)</option>
+              <option value={300}>Severe (&ge; 300 MW)</option>
             </select>
           </div>
         </div>
@@ -321,18 +364,8 @@ export const FireMap: React.FC<FireMapProps> = ({
       {/* Basemap Switcher (Top Right) */}
       <div className="absolute top-3 right-3 z-20 flex items-center gap-1 bg-white/95 backdrop-blur-sm border border-slate-200 p-1 rounded-md shadow-sm text-xs">
         <button
-          onClick={() => setBasemap("dark")}
-          className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
-            basemap === "dark"
-              ? "bg-slate-900 text-white"
-              : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
-          }`}
-        >
-          Dark
-        </button>
-        <button
           onClick={() => setBasemap("satellite")}
-          className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
+          className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
             basemap === "satellite"
               ? "bg-slate-900 text-white"
               : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
@@ -342,13 +375,23 @@ export const FireMap: React.FC<FireMapProps> = ({
         </button>
         <button
           onClick={() => setBasemap("light")}
-          className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
+          className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
             basemap === "light"
               ? "bg-slate-900 text-white"
               : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
           }`}
         >
           Light
+        </button>
+        <button
+          onClick={() => setBasemap("dark")}
+          className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
+            basemap === "dark"
+              ? "bg-slate-900 text-white"
+              : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+          }`}
+        >
+          Dark
         </button>
       </div>
 
@@ -378,41 +421,58 @@ export const FireMap: React.FC<FireMapProps> = ({
       </div>
 
       {/* Bottom Coordinates & Scale HUD */}
-      <div className="absolute bottom-2 left-3 z-20 bg-slate-900/80 backdrop-blur-sm border border-slate-700/60 px-2.5 py-1 rounded text-[10px] font-mono text-slate-300 flex items-center gap-3">
-        <span>
-          LAT/LON: {cursorCoords ? `${cursorCoords.lat.toFixed(4)}°, ${cursorCoords.lng.toFixed(4)}°` : "Hover to track"}
-        </span>
-        <span className="text-slate-500">|</span>
-        <span>ZOOM: {zoomLevel.toFixed(1)}</span>
-        <span className="text-slate-500">|</span>
-        <span>WGS84 &bull; EPSG:3857</span>
-        <span className="text-slate-500">|</span>
-        <span className={isLive ? "text-emerald-400 font-semibold" : "text-amber-400 font-semibold"}>
-          {isLive ? "NASA FIRMS LIVE" : "DEMO FIXTURES"}
-        </span>
+      <div className="absolute bottom-2 left-3 right-3 z-20 bg-slate-900/85 backdrop-blur-sm border border-slate-700/60 px-3 py-1 rounded text-[10px] font-mono text-slate-300 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-3">
+          <span>
+            LAT: {cursorCoords ? `${cursorCoords.lat.toFixed(4)}°` : "-"} &bull; LON: {cursorCoords ? `${cursorCoords.lng.toFixed(4)}°` : "-"}
+          </span>
+          <span className="text-slate-600">|</span>
+          <span>ZOOM: {zoomLevel.toFixed(1)}</span>
+          <span className="text-slate-600">|</span>
+          <span>CRS: EPSG:3857 (Web Mercator)</span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className={isLive ? "text-emerald-400 font-semibold" : "text-amber-400 font-semibold"}>
+            {isLive ? "NASA FIRMS LIVE (Near Real-Time)" : "DEMO FIXTURES BUFFER"}
+          </span>
+          <a
+            href="https://firms.modaps.eosdis.nasa.gov/"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Open NASA FIRMS Web Portal"
+            className="text-slate-400 hover:text-white inline-flex items-center"
+          >
+            <ExternalLink className="w-3 h-3" />
+          </a>
+        </div>
       </div>
 
-      {/* Bottom Legend */}
+      {/* Bottom Legend (Reference 1 & 2 Hybrid) */}
       <div className="absolute bottom-8 left-3 z-20 bg-white/95 backdrop-blur-sm border border-slate-200 px-3 py-2 rounded-md shadow-sm text-xs text-slate-700 space-y-1.5 hidden md:block">
         <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-          Legend
+          Legend (Active Fire / Thermal Anomaly)
         </div>
-        <div className="flex items-center gap-4 text-[11px] font-mono">
+        <div className="flex items-center gap-3 text-[11px] font-mono">
           <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#0284c7] border border-white" />
+            <span className="w-2.5 h-2.5 rounded-full bg-[#0284c7] border border-white shadow-xs" />
             <span>VIIRS (375m)</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#7c3aed] border border-white" />
+            <span className="w-2.5 h-2.5 rounded-full bg-[#7c3aed] border border-white shadow-xs" />
             <span>MODIS (1km)</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-full bg-[#ea580c] border-2 border-[#4f46e5]" />
+            <span className="w-3 h-3 rounded-full bg-[#ea580c] border-2 border-[#4f46e5] shadow-xs" />
             <span>Dual Match</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-full bg-[#dc2626] border border-white" />
-            <span>&gt;300 MW</span>
+          <div className="h-3 w-px bg-slate-300" />
+          <div className="flex items-center gap-1 text-[10px] text-slate-500">
+            <span>FRP:</span>
+            <span className="w-2 h-2 rounded-full bg-[#eab308]" title="<10 MW" />
+            <span className="w-2 h-2 rounded-full bg-[#f97316]" title="10-50 MW" />
+            <span className="w-2 h-2 rounded-full bg-[#ea580c]" title="50-100 MW" />
+            <span className="w-2.5 h-2.5 rounded-full bg-[#dc2626]" title=">100 MW" />
           </div>
         </div>
       </div>

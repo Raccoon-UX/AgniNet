@@ -69,7 +69,7 @@ export const ActivityTrendChart: React.FC = () => {
           <div className="flex items-center gap-2">
             <BarChart2 className="w-4 h-4 text-slate-700" />
             <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wider">
-              Orbital Pass Telemetry Trends
+              Diurnal Detection Trend (Last 24 Hours)
             </h3>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">

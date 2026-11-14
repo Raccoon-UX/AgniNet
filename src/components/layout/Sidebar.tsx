@@ -152,37 +152,62 @@ export const Sidebar: React.FC<SidebarProps> = ({
             );
           })}
 
-          {/* Spacecraft Constellation Monitor (Desktop Expanded Only) */}
+          {/* Mission Context & Constellation Info (Desktop Expanded Only) */}
           {!collapsed && (
-            <div className="pt-4 mt-4 border-t border-slate-200 px-2 space-y-2">
-              <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                <span className="flex items-center gap-1">
-                  <Satellite className="w-3 h-3 text-slate-500" />
-                  Constellation
-                </span>
-                <span className="text-emerald-700 font-mono text-[9px]">5 ACTIVE</span>
+            <div className="pt-3 mt-3 border-t border-slate-200 px-2 space-y-3">
+              {/* Mission Context */}
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                  Mission Context
+                </div>
+                <div className="p-2 rounded-md bg-slate-50 border border-slate-200">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-5 h-5 rounded-full bg-[#0b3d91] text-white flex items-center justify-center text-[8px] font-black shrink-0">
+                      NASA
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-bold text-slate-800 leading-none">
+                        NASA FIRMS
+                      </div>
+                      <div className="text-[9px] text-slate-500 truncate mt-0.5">
+                        Fire Information System
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-2 space-y-1">
+                    <div className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+                      Data Sources
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      <span className="px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 text-[9px] font-mono font-medium">
+                        MODIS (Terra/Aqua)
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-200 text-[9px] font-mono font-medium">
+                        VIIRS (S-NPP/NOAA-20/21)
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              <div className="space-y-1 text-[11px] font-mono">
-                <div className="flex items-center justify-between py-0.5 text-slate-600">
-                  <span className="truncate">Terra (MODIS 1km)</span>
-                  <span className="text-[10px] text-slate-400">AM</span>
+              {/* Constellation Quick Monitor */}
+              <div className="space-y-1 text-[10px] font-mono">
+                <div className="flex items-center justify-between text-slate-400 uppercase tracking-wider font-semibold">
+                  <span className="flex items-center gap-1">
+                    <Satellite className="w-3 h-3 text-slate-500" />
+                    Constellation
+                  </span>
+                  <span className="text-emerald-700 text-[9px]">5 ACTIVE</span>
                 </div>
-                <div className="flex items-center justify-between py-0.5 text-slate-600">
-                  <span className="truncate">Aqua (MODIS 1km)</span>
-                  <span className="text-[10px] text-slate-400">PM</span>
-                </div>
-                <div className="flex items-center justify-between py-0.5 text-slate-600">
-                  <span className="truncate">Suomi-NPP (VIIRS 375m)</span>
-                  <span className="text-[10px] text-cyan-600">375m</span>
-                </div>
-                <div className="flex items-center justify-between py-0.5 text-slate-600">
-                  <span className="truncate">NOAA-20 (VIIRS 375m)</span>
-                  <span className="text-[10px] text-cyan-600">375m</span>
-                </div>
-                <div className="flex items-center justify-between py-0.5 text-slate-600">
-                  <span className="truncate">NOAA-21 (VIIRS 375m)</span>
-                  <span className="text-[10px] text-cyan-600">375m</span>
+                <div className="text-slate-500 text-[10px] space-y-0.5">
+                  <div className="flex justify-between">
+                    <span>Terra &bull; Aqua</span>
+                    <span className="text-slate-700">1000m AM/PM</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>SNPP &bull; N20 &bull; N21</span>
+                    <span className="text-sky-700">375m I-Band</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -192,19 +217,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Footer / System Meta */}
         <div className="p-3 border-t border-slate-200 bg-slate-50">
           {!collapsed ? (
-            <div className="space-y-1 text-[10px] font-mono text-slate-500">
-              <div className="flex items-center justify-between">
-                <span>ENGINE:</span>
-                <span className="text-slate-700 font-semibold">Harmonize-v1.1.1</span>
+            <div className="flex items-center justify-between text-[10px] font-mono">
+              <div className="flex items-center gap-1.5 text-emerald-700 font-medium">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                <span>AgniNet-Harmonize v1.1.1</span>
               </div>
-              <div className="flex items-center justify-between">
-                <span>RELEASE:</span>
-                <span className="text-slate-700">v1.2.0</span>
-              </div>
+              <span className="text-slate-400">2026</span>
             </div>
           ) : (
-            <div className="flex justify-center text-[9px] font-mono text-slate-400">
-              v1.2
+            <div className="flex justify-center text-[9px] font-mono text-emerald-700">
+              ● v1.1
             </div>
           )}
         </div>
