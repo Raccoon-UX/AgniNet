@@ -195,6 +195,8 @@ export interface HarmonizedEvent {
   viirs_individual_frps: number[];
   spatial_distance_km?: number | null;
   temporal_difference_minutes?: number | null;
+  spatial_score?: number | null;
+  temporal_score?: number | null;
   match_score: number;
   evidence_notes: string;
   algorithm_version: string;
@@ -211,6 +213,7 @@ export interface HarmonizationStats {
   mean_spatial_distance_km?: number | null;
   mean_temporal_difference_minutes?: number | null;
   average_match_score?: number | null;
+  unfiltered_total_events?: number | null;
 }
 
 export interface HarmonizationResponse {

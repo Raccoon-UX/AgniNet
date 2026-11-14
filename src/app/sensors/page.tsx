@@ -294,7 +294,7 @@ export default function SensorComparisonPage() {
         <div className="space-y-3">
           <div className="flex items-center justify-between text-xs text-slate-400 px-1">
             <span>Showing {events.length} unified event association(s)</span>
-            <span className="font-mono text-[11px] text-slate-500">Algorithm: AgniNet-Harmonize-v1.0</span>
+            <span className="font-mono text-[11px] text-slate-500">Algorithm: AgniNet-Harmonize-v1.1</span>
           </div>
 
           <div className="overflow-x-auto rounded-lg border border-white/5">
@@ -397,6 +397,20 @@ export default function SensorComparisonPage() {
                                 </p>
                                 <div className="text-[10px] text-slate-500 font-mono pt-1">
                                   Acquisition Window: {evt.earliest_acq_utc ?? "—"} to {evt.latest_acq_utc ?? "—"} UTC
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-white/5">
+                                  <div>
+                                    <span className="text-slate-500 text-[10px] block">Spatial Sub-Score</span>
+                                    <span className="font-mono text-slate-200">
+                                      {evt.spatial_score !== undefined && evt.spatial_score !== null ? `${Math.round(evt.spatial_score * 100)}%` : "—"}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span className="text-slate-500 text-[10px] block">Temporal Sub-Score</span>
+                                    <span className="font-mono text-slate-200">
+                                      {evt.temporal_score !== undefined && evt.temporal_score !== null ? `${Math.round(evt.temporal_score * 100)}%` : "—"}
+                                    </span>
+                                  </div>
                                 </div>
                               </div>
 
