@@ -260,31 +260,35 @@ export default function MapPage() {
                   <div className="p-2.5 rounded-lg bg-slate-900/60 border border-white/5">
                     <span className="text-[10px] text-slate-400 block">Day / Night</span>
                     <span className="font-mono text-slate-200">
-                      {selectedHotspot.dayNight === "D" ? "Daytime Pass" : "Nighttime Pass"}
+                      {selectedHotspot.dayNight === "D"
+                        ? "Daytime Pass"
+                        : selectedHotspot.dayNight === "N"
+                        ? "Nighttime Pass"
+                        : "Unspecified"}
                     </span>
                   </div>
                   <div className="p-2.5 rounded-lg bg-slate-900/60 border border-white/5">
                     <span className="text-[10px] text-slate-400 block">Brightness (T21/I4)</span>
                     <span className="font-mono text-orange-400 font-semibold">
-                      {selectedHotspot.brightnessKelvin ? `${selectedHotspot.brightnessKelvin} K` : "N/A"}
+                      {selectedHotspot.brightnessKelvin != null ? `${selectedHotspot.brightnessKelvin} K` : "N/A"}
                     </span>
                   </div>
                   <div className="p-2.5 rounded-lg bg-slate-900/60 border border-white/5">
                     <span className="text-[10px] text-slate-400 block">Background (T31/I5)</span>
                     <span className="font-mono text-slate-300">
-                      {selectedHotspot.brightT31Kelvin ? `${selectedHotspot.brightT31Kelvin} K` : "N/A"}
+                      {selectedHotspot.brightT31Kelvin != null ? `${selectedHotspot.brightT31Kelvin} K` : "N/A"}
                     </span>
                   </div>
                   <div className="p-2.5 rounded-lg bg-slate-900/60 border border-white/5">
                     <span className="text-[10px] text-slate-400 block">Scan Angle</span>
                     <span className="font-mono text-slate-300">
-                      {selectedHotspot.scanAngle ? `${selectedHotspot.scanAngle}°` : "N/A"}
+                      {selectedHotspot.scanAngle != null ? `${selectedHotspot.scanAngle}°` : "N/A"}
                     </span>
                   </div>
                   <div className="p-2.5 rounded-lg bg-slate-900/60 border border-white/5">
                     <span className="text-[10px] text-slate-400 block">Pixel Footprint</span>
                     <span className="font-mono text-slate-300">
-                      {selectedHotspot.trackKm ? `${selectedHotspot.trackKm} km` : "N/A"}
+                      {selectedHotspot.trackKm != null ? `${selectedHotspot.trackKm} km` : "N/A"}
                     </span>
                   </div>
                 </div>
@@ -295,13 +299,13 @@ export default function MapPage() {
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400 text-[11px]">Detection Confidence</span>
                   <span className="font-mono font-bold text-emerald-400">
-                    {selectedHotspot.confidence}%
+                    {selectedHotspot.confidence != null ? `${selectedHotspot.confidence}%` : "Unrated"}
                   </span>
                 </div>
                 <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
                   <div
                     className="bg-emerald-400 h-full rounded-full"
-                    style={{ width: `${selectedHotspot.confidence}%` }}
+                    style={{ width: `${selectedHotspot.confidence ?? 0}%` }}
                   />
                 </div>
                 <div className="pt-1 text-[11px] text-slate-400">

@@ -275,7 +275,7 @@ export const HotspotTable: React.FC<HotspotTableProps> = ({
                         )}
                       </div>
                       <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                        {hotspot.satellite} &bull; Scan {hotspot.scanAngle}°
+                        {hotspot.satellite} &bull; Scan {hotspot.scanAngle != null ? `${hotspot.scanAngle}°` : "N/A"}
                       </div>
                     </td>
 
@@ -290,7 +290,7 @@ export const HotspotTable: React.FC<HotspotTableProps> = ({
                         </span>
                       </div>
                       <span className="text-[10px] text-slate-400 mt-0.5 block font-mono">
-                        Brightness {hotspot.brightnessKelvin} K
+                        Brightness {hotspot.brightnessKelvin != null ? `${hotspot.brightnessKelvin} K` : "N/A"}
                       </span>
                     </td>
 

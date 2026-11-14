@@ -32,8 +32,13 @@ export const DEMO_KPIS: HotspotKpis = {
   harmonizedDelta: 18.2,
   totalFrpGigawatts: 384.6,
   avgConfidence: 87.4,
-  activeSensorsOnline: 5,
-  totalSensors: 5,
+  activeSensorsOnline: 4,
+  totalSensors: 4,
+  activeFeedCount: 4,
+  totalFeedCount: 4,
+  detectedPlatformCount: 5,
+  totalPlatformCount: 5,
+  detectedSatellites: ["Terra", "Aqua", "Suomi-NPP", "NOAA-20", "NOAA-21"],
 };
 
 export const DEMO_REGIONS: RegionalMetric[] = [

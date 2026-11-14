@@ -277,7 +277,12 @@ export default function OverviewPage() {
       </div>
 
       {/* Spacecraft Constellation Status */}
-      <ConstellationStatus />
+      <ConstellationStatus
+        detectedSatellites={kpis.detectedSatellites}
+        activeFeedCount={kpis.activeFeedCount}
+        totalFeedCount={kpis.totalFeedCount}
+        isLive={isLive}
+      />
 
       {/* Detailed Hotspot Log Table */}
       <HotspotTable

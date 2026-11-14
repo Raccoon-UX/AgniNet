@@ -1,5 +1,6 @@
+from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional, Union
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class NormalizedObservation(BaseModel):
@@ -47,6 +48,33 @@ class NormalizedObservation(BaseModel):
     is_live: bool = Field(default=False, description="True if real NASA FIRMS telemetry, False if demo fixture")
     raw_fields: Dict[str, Any] = Field(default_factory=dict, description="Preserved original raw sensor fields")
 
+    @field_validator("acquisition_date")
+    @classmethod
+    def validate_date(cls, v: str) -> str:
+        try:
+            d = datetime.strptime(v, "%Y-%m-%d")
+            if d.year < 1990 or d.year > 2100:
+                raise ValueError("Year out of realistic satellite operational bounds")
+            return v
+        except Exception as e:
+            raise ValueError(f"Invalid acquisition_date: '{v}'. Must be a valid YYYY-MM-DD calendar date.") from e
+
+    @field_validator("acquisition_time_utc")
+    @classmethod
+    def validate_time(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        parts = v.split(":")
+        if len(parts) != 2:
+            raise ValueError(f"Invalid acquisition_time_utc: '{v}'. Must be HH:MM.")
+        try:
+            h, m = int(parts[0]), int(parts[1])
+            if not (0 <= h <= 23 and 0 <= m <= 59):
+                raise ValueError(f"Time out of 00:00–23:59 range: '{v}'")
+            return f"{h:02d}:{m:02d}"
+        except Exception as e:
+            raise ValueError(f"Invalid acquisition_time_utc: '{v}'") from e
+
 
 class ObservationKpis(BaseModel):
     total_hotspots: int
@@ -57,6 +85,10 @@ class ObservationKpis(BaseModel):
     max_frp_mw: Optional[float] = None
     daytime_count: int
     nighttime_count: int
+    detected_satellites: List[str] = Field(
+        default_factory=list,
+        description="Physical satellite platforms confirmed present in observations"
+    )
 
 
 class FireObservationsResponse(BaseModel):
@@ -72,6 +104,11 @@ class FireObservationsResponse(BaseModel):
     )
     succeeded_sources: List[str] = Field(default_factory=list)
     failed_sources: List[str] = Field(default_factory=list)
+    active_feed_count: int = Field(default=0, description="Count of successfully queried FIRMS feeds")
+    total_feed_count: int = Field(default=4, description="Total configured FIRMS feeds (4)")
+    detected_platform_count: int = Field(default=0, description="Physical platforms with confirmed detections")
+    total_platform_count: int = Field(default=5, description="Total constellation platforms (5)")
+    detected_satellites: List[str] = Field(default_factory=list)
     fetched_at: str
     total_count: int
     observations: List[NormalizedObservation]

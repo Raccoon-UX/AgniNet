@@ -13,18 +13,18 @@ export interface HotspotObservation {
   id: string;
   latitude: number;
   longitude: number;
-  brightnessKelvin: number;
-  scanAngle: number;
-  trackKm: number;
+  brightnessKelvin: number | null;
+  scanAngle: number | null;
+  trackKm: number | null;
   acquisitionDate: string;
   acquisitionTimeUtc: string | null;
   satellite: SatellitePlatform;
   sensor: "MODIS" | "VIIRS" | "HARMONIZED";
   confidence: number | null; // 0-100% or null if not reported
-  version: string;
-  brightT31Kelvin: number;
-  frpMw: number; // Fire Radiative Power in Megawatts
-  dayNight: "D" | "N";
+  version: string | null;
+  brightT31Kelvin: number | null;
+  frpMw: number | null; // Fire Radiative Power in Megawatts, null if uncalculated
+  dayNight: "D" | "N" | null;
   landCover: string;
   region: string;
   country: string;
@@ -48,6 +48,11 @@ export interface HotspotKpis {
   avgConfidence?: number | null;
   activeSensorsOnline?: number;
   totalSensors?: number;
+  activeFeedCount?: number;
+  totalFeedCount?: number;
+  detectedPlatformCount?: number;
+  totalPlatformCount?: number;
+  detectedSatellites?: string[];
   daytimeCount?: number;
   nighttimeCount?: number;
   isLive?: boolean;
@@ -134,6 +139,11 @@ export interface BackendFireResponse {
   is_partial?: boolean;
   succeeded_sources?: string[];
   failed_sources?: string[];
+  active_feed_count?: number;
+  total_feed_count?: number;
+  detected_platform_count?: number;
+  total_platform_count?: number;
+  detected_satellites?: string[];
   fetched_at: string;
   total_count: number;
   observations: BackendObservation[];
@@ -146,6 +156,7 @@ export interface BackendFireResponse {
     max_frp_mw?: number | null;
     daytime_count: number;
     nighttime_count: number;
+    detected_satellites?: string[];
   };
   attribution: string;
   notice?: string | null;

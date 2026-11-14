@@ -109,7 +109,7 @@ export const FireMap: React.FC<FireMapProps> = ({
 
     // Filter hotspots
     const visibleHotspots = activeHotspots.filter((h) => {
-      if (h.frpMw < minFrp) return false;
+      if (minFrp > 0 && (h.frpMw == null || h.frpMw < minFrp)) return false;
       if (sensorFilter === "ALL") return true;
       if (sensorFilter === "HARMONIZED") return h.isHarmonizedMatch;
       if (sensorFilter === "MODIS") return h.sensor === "MODIS";
@@ -126,12 +126,13 @@ export const FireMap: React.FC<FireMapProps> = ({
       const el = document.createElement("div");
       el.className = "cursor-pointer group relative flex items-center justify-center";
       
-      const size = hotspot.frpMw > 300 ? 22 : hotspot.frpMw > 100 ? 18 : 14;
+      const frpVal = hotspot.frpMw ?? 0;
+      const size = frpVal > 300 ? 22 : frpVal > 100 ? 18 : 14;
       el.style.width = `${size}px`;
       el.style.height = `${size}px`;
 
       el.innerHTML = `
-        <div class="absolute inset-0 rounded-full animate-ping opacity-60" style="background-color: ${frpColor.hex}; animation-duration: ${hotspot.frpMw > 400 ? '1.5s' : '3s'};"></div>
+        <div class="absolute inset-0 rounded-full animate-ping opacity-60" style="background-color: ${frpColor.hex}; animation-duration: ${frpVal > 400 ? '1.5s' : '3s'};"></div>
         <div class="relative w-full h-full rounded-full border-2 border-white/80 shadow-lg flex items-center justify-center transition-transform group-hover:scale-125" style="background-color: ${frpColor.hex}; box-shadow: 0 0 15px ${frpColor.hex};">
           <div class="w-1.5 h-1.5 rounded-full bg-white"></div>
         </div>
@@ -143,7 +144,7 @@ export const FireMap: React.FC<FireMapProps> = ({
           <div class="flex items-center justify-between pb-1.5 border-b border-white/10">
             <span class="font-mono font-bold text-white">${hotspot.id}</span>
             <span class="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold" style="background-color: ${frpColor.hex}22; color: ${frpColor.hex}; border: 1px solid ${frpColor.hex}44;">
-              ${hotspot.frpMw.toFixed(1)} MW FRP
+              ${hotspot.frpMw != null ? `${hotspot.frpMw.toFixed(1)} MW FRP` : "FRP Unreported"}
             </span>
           </div>
 
@@ -154,7 +155,7 @@ export const FireMap: React.FC<FireMapProps> = ({
             </div>
             <div>
               <span class="text-slate-400 block text-[10px]">Brightness Temp</span>
-              <span class="font-mono text-slate-200">${hotspot.brightnessKelvin} K</span>
+              <span class="font-mono text-slate-200">${hotspot.brightnessKelvin != null ? `${hotspot.brightnessKelvin} K` : "N/A"}</span>
             </div>
             <div>
               <span class="text-slate-400 block text-[10px]">Confidence</span>

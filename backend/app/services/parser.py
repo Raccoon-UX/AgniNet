@@ -1,3 +1,4 @@
+from datetime import datetime
 import csv
 import io
 import math
@@ -15,25 +16,44 @@ def _safe_float(val: Any) -> Optional[float]:
         return None
 
 
-def _format_acq_time(raw_time: Any) -> Optional[str]:
+def _format_and_validate_acq_time(raw_time: Any) -> Tuple[bool, Optional[str]]:
     """
-    Formats 3 or 4-digit acquisition times e.g. '345' -> '03:45', '1420' -> '14:20'.
-    Returns None if missing or empty — NEVER assigns fabricated '00:00'.
+    Validates and formats acquisition times within 00:00–23:59.
+    Returns (is_valid, formatted_time_str).
+    - If raw_time is None or empty/null: returns (True, None) — valid missing telemetry.
+    - If raw_time is provided and valid (e.g. '345' -> '03:45', '1420' -> '14:20', '03:45' -> '03:45'): returns (True, 'HH:MM').
+    - If raw_time is malformed, non-numeric, or outside 00:00-23:59: returns (False, None).
     """
     if raw_time is None:
-        return None
-    s = str(raw_time).strip().replace(":", "")
+        return True, None
+    s = str(raw_time).strip()
     if not s or s.lower() in {"none", "null", "nan"}:
-        return None
-    if len(s) == 3:
-        return f"0{s[0]}:{s[1:]}"
-    elif len(s) >= 4:
-        return f"{s[:2]}:{s[2:4]}"
-    elif len(s) == 2:
-        return f"00:{s}"
-    elif len(s) == 1:
-        return f"00:0{s}"
-    return None
+        return True, None
+
+    digits = s.replace(":", "").strip()
+    if not digits.isdigit():
+        return False, None
+
+    if len(digits) == 1:
+        h, m = 0, int(digits)
+    elif len(digits) == 2:
+        h, m = 0, int(digits)
+    elif len(digits) == 3:
+        h, m = int(digits[0]), int(digits[1:3])
+    elif len(digits) == 4:
+        h, m = int(digits[:2]), int(digits[2:4])
+    else:
+        return False, None
+
+    if 0 <= h <= 23 and 0 <= m <= 59:
+        return True, f"{h:02d}:{m:02d}"
+    return False, None
+
+
+def _format_acq_time(raw_time: Any) -> Optional[str]:
+    """Compatibility wrapper around _format_and_validate_acq_time."""
+    _, formatted = _format_and_validate_acq_time(raw_time)
+    return formatted
 
 
 def _normalize_satellite_name(sat: Any, source_id: str, instrument: str) -> str:
@@ -139,17 +159,27 @@ def parse_firms_csv(csv_text: str, source_id: str) -> List[NormalizedObservation
         if lat_val < -90.0 or lat_val > 90.0 or lon_val < -180.0 or lon_val > 180.0:
             continue
 
-        # 2. Acquisition Date validation — reject records with missing dates
+        # 2. Acquisition Date validation — reject records with missing or invalid calendar dates
         acq_date_raw = row.get(headers.get("acq_date", "acq_date"))
         if not acq_date_raw or not str(acq_date_raw).strip():
             continue
         acq_date = str(acq_date_raw).strip()
         if acq_date.lower() in {"none", "null", "nan"}:
             continue
+        try:
+            d_val = datetime.strptime(acq_date, "%Y-%m-%d")
+            if d_val.year < 1990 or d_val.year > 2100:
+                continue
+        except (ValueError, TypeError):
+            # Reject malformed or impossible calendar dates (e.g. 2026-02-31, 2026-13-45)
+            continue
 
-        # 3. Acquisition Time formatting — preserve null if missing (no fake 00:00)
+        # 3. Acquisition Time formatting & range validation (00:00–23:59)
         raw_acq_time = row.get(headers.get("acq_time", "acq_time"))
-        acq_time_fmt = _format_acq_time(raw_acq_time)
+        is_valid_time, acq_time_fmt = _format_and_validate_acq_time(raw_acq_time)
+        if not is_valid_time:
+            # Reject malformed timestamps (e.g. 25:70, 9999, non-numeric)
+            continue
 
         # 4. Deterministic record ID to prevent duplicates within the feed
         time_token = acq_time_fmt.replace(":", "") if acq_time_fmt else "notime"
@@ -232,6 +262,7 @@ def compute_kpis(observations: List[NormalizedObservation]) -> ObservationKpis:
             max_frp_mw=None,
             daytime_count=0,
             nighttime_count=0,
+            detected_satellites=[],
         )
 
     modis_c = sum(1 for o in observations if o.instrument == "MODIS")
@@ -247,6 +278,17 @@ def compute_kpis(observations: List[NormalizedObservation]) -> ObservationKpis:
     conf_vals = [o.confidence_numeric for o in observations if o.confidence_numeric is not None]
     avg_conf = (sum(conf_vals) / len(conf_vals)) if conf_vals else None
 
+    # Collect confirmed physical satellite platforms present in observations
+    detected_sats = sorted(
+        list(
+            {
+                o.satellite
+                for o in observations
+                if o.satellite and o.satellite not in {"Fused Constellation", "JPSS Constellation"}
+            }
+        )
+    )
+
     return ObservationKpis(
         total_hotspots=total,
         modis_count=modis_c,
@@ -256,4 +298,5 @@ def compute_kpis(observations: List[NormalizedObservation]) -> ObservationKpis:
         max_frp_mw=round(max_frp, 1) if max_frp is not None else None,
         daytime_count=day_c,
         nighttime_count=night_c,
+        detected_satellites=detected_sats,
     )

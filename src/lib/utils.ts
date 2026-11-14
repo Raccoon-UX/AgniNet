@@ -5,7 +5,10 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatFRP(frp: number): string {
+export function formatFRP(frp: number | null | undefined): string {
+  if (frp == null) {
+    return "N/A";
+  }
   if (frp >= 1000) {
     return `${(frp / 1000).toFixed(1)}k MW`;
   }
@@ -18,12 +21,20 @@ export function formatCoordinates(lat: number, lon: number): string {
   return `${Math.abs(lat).toFixed(4)}° ${latDir}, ${Math.abs(lon).toFixed(4)}° ${lonDir}`;
 }
 
-export function getFRPColor(frp: number): {
+export function getFRPColor(frp: number | null | undefined): {
   badge: string;
   glow: string;
   hex: string;
-  label: "Low" | "Moderate" | "High" | "Extreme";
+  label: "Low" | "Moderate" | "High" | "Extreme" | "Unrated";
 } {
+  if (frp == null) {
+    return {
+      badge: "bg-slate-500/15 text-slate-400 border-slate-500/30",
+      glow: "",
+      hex: "#94a3b8",
+      label: "Unrated",
+    };
+  }
   if (frp >= 200) {
     return {
       badge: "bg-red-500/15 text-red-400 border-red-500/30",
