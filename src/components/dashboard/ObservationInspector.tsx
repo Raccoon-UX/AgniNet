@@ -142,7 +142,8 @@ export const ObservationInspector: React.FC<ObservationInspectorProps> = ({
             Acquisition Time (UTC)
           </span>
           <span className="text-slate-900 font-medium">
-            {observation.acquisitionDate} {observation.acquisitionTimeUtc ?? "00:00:00"}
+            {observation.acquisitionDate ? `${observation.acquisitionDate} ` : ""}
+            {observation.acquisitionTimeUtc || "Not reported"}
           </span>
         </div>
 
@@ -182,8 +183,10 @@ export const ObservationInspector: React.FC<ObservationInspectorProps> = ({
           <span className="text-slate-500 font-sans text-[11px] flex items-center gap-1.5">
             {observation.dayNight === "D" ? (
               <Sun className="w-3.5 h-3.5 text-amber-500" />
-            ) : (
+            ) : observation.dayNight === "N" ? (
               <Moon className="w-3.5 h-3.5 text-indigo-400" />
+            ) : (
+              <Compass className="w-3.5 h-3.5 text-slate-400" />
             )}
             Day/Night
           </span>
@@ -192,7 +195,7 @@ export const ObservationInspector: React.FC<ObservationInspectorProps> = ({
               ? "Day (Daytime overpass)"
               : observation.dayNight === "N"
               ? "Night (Nighttime overpass)"
-              : "Ascending/Descending"}
+              : "Not reported"}
           </span>
         </div>
 
@@ -236,7 +239,7 @@ export const ObservationInspector: React.FC<ObservationInspectorProps> = ({
             Thermal Contrast (&Delta;T)
           </span>
           <span className="text-slate-900 font-semibold">
-            {tempDiff != null ? `${tempDiff} K` : "N/A"}
+            {tempDiff != null ? `+${tempDiff} K` : "N/A"}
           </span>
         </div>
 
@@ -247,7 +250,7 @@ export const ObservationInspector: React.FC<ObservationInspectorProps> = ({
             Scan Angle (Nadir)
           </span>
           <span className="text-slate-800">
-            {observation.scanAngle != null ? `${observation.scanAngle.toFixed(1)}°` : "26.3°"}
+            {observation.scanAngle != null ? `${observation.scanAngle.toFixed(1)}°` : "N/A"}
           </span>
         </div>
 
@@ -259,10 +262,10 @@ export const ObservationInspector: React.FC<ObservationInspectorProps> = ({
           </span>
           <span className="text-slate-800 text-[10px]">
             {observation.trackKm != null
-              ? `${(observation.trackKm * 1000).toFixed(0)} m × 386 m`
+              ? `${(observation.trackKm * 1000).toFixed(0)} m (Track)`
               : isVIIRS
-              ? "375 m × 375 m"
-              : "1000 m × 1000 m"}
+              ? "375 m (Nominal Nadir)"
+              : "1000 m (Nominal Nadir)"}
           </span>
         </div>
 
@@ -273,7 +276,7 @@ export const ObservationInspector: React.FC<ObservationInspectorProps> = ({
             Confidence (FIRMS)
           </span>
           <span className="text-emerald-700 font-semibold">
-            {observation.confidence != null ? `${observation.confidence}%` : "High"}
+            {observation.confidence != null ? `${observation.confidence}%` : "Not reported"}
           </span>
         </div>
 

@@ -16,10 +16,12 @@ import { RefreshCw, AlertCircle, Filter, Calendar, Layers, MapPin } from "lucide
 import Link from "next/link";
 
 export default function OverviewPage() {
-  const [selectedHotspot, setSelectedHotspot] = useState<HotspotObservation | null>(DEMO_HOTSPOTS[0]);
-  const [observations, setObservations] = useState<HotspotObservation[]>(DEMO_HOTSPOTS);
+  const [selectedHotspot, setSelectedHotspot] = useState<HotspotObservation | null>(null);
+  const [observations, setObservations] = useState<HotspotObservation[]>([]);
   const [kpis, setKpis] = useState<HotspotKpis>(DEMO_KPIS);
   const [isLive, setIsLive] = useState<boolean>(false);
+  const [isDemo, setIsDemo] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(true);
   const [lastFetchTime, setLastFetchTime] = useState<string>("");
   const [notice, setNotice] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState<boolean>(false);
@@ -32,6 +34,7 @@ export default function OverviewPage() {
 
   const loadData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
+    else setLoading(true);
 
     let bbox: { min_lon?: number; min_lat?: number; max_lon?: number; max_lat?: number } = {};
     if (selectedRegionPreset === "us") {
@@ -46,6 +49,7 @@ export default function OverviewPage() {
       const result = await fetchObservations({
         source: selectedSource,
         day_range: selectedDayRange,
+        demo: isDemo,
         ...bbox,
       });
 
@@ -56,6 +60,8 @@ export default function OverviewPage() {
       setNotice(result.notice ?? null);
       if (result.observations.length > 0) {
         setSelectedHotspot(result.observations[0]);
+      } else {
+        setSelectedHotspot(null);
       }
       if (result.error && !result.isLive) {
         setError(result.error);
@@ -65,17 +71,25 @@ export default function OverviewPage() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
-      setObservations(DEMO_HOTSPOTS);
-      setKpis(DEMO_KPIS);
+      if (isDemo) {
+        setObservations(DEMO_HOTSPOTS);
+        setKpis(DEMO_KPIS);
+        setSelectedHotspot(DEMO_HOTSPOTS[0]);
+      } else {
+        setObservations([]);
+        setSelectedHotspot(null);
+      }
       setIsLive(false);
     } finally {
       if (isRefresh) setRefreshing(false);
+      setLoading(false);
     }
-  }, [selectedSource, selectedDayRange, selectedRegionPreset]);
+  }, [selectedSource, selectedDayRange, selectedRegionPreset, isDemo]);
 
   useEffect(() => {
     let ignore = false;
     async function execute() {
+      setLoading(true);
       let bbox: { min_lon?: number; min_lat?: number; max_lon?: number; max_lat?: number } = {};
       if (selectedRegionPreset === "us") {
         bbox = { min_lon: -125.0, min_lat: 32.0, max_lon: -114.0, max_lat: 42.5 };
@@ -89,6 +103,7 @@ export default function OverviewPage() {
         const result = await fetchObservations({
           source: selectedSource,
           day_range: selectedDayRange,
+          demo: isDemo,
           ...bbox,
         });
 
@@ -100,6 +115,8 @@ export default function OverviewPage() {
           setNotice(result.notice ?? null);
           if (result.observations.length > 0) {
             setSelectedHotspot(result.observations[0]);
+          } else {
+            setSelectedHotspot(null);
           }
           if (result.error && !result.isLive) {
             setError(result.error);
@@ -111,9 +128,19 @@ export default function OverviewPage() {
         if (!ignore) {
           const msg = err instanceof Error ? err.message : String(err);
           setError(msg);
-          setObservations(DEMO_HOTSPOTS);
-          setKpis(DEMO_KPIS);
+          if (isDemo) {
+            setObservations(DEMO_HOTSPOTS);
+            setKpis(DEMO_KPIS);
+            setSelectedHotspot(DEMO_HOTSPOTS[0]);
+          } else {
+            setObservations([]);
+            setSelectedHotspot(null);
+          }
           setIsLive(false);
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
         }
       }
     }
@@ -122,7 +149,7 @@ export default function OverviewPage() {
     return () => {
       ignore = true;
     };
-  }, [selectedSource, selectedDayRange, selectedRegionPreset]);
+  }, [selectedSource, selectedDayRange, selectedRegionPreset, isDemo]);
 
   return (
     <div className="space-y-6">
@@ -133,6 +160,32 @@ export default function OverviewPage() {
         description="Live NASA MODIS (1 km) and VIIRS (375 m) fire observations with cross-sensor harmonization and radiative analysis."
         action={
           <div className="flex flex-wrap items-center gap-2">
+            {/* Live Feed vs Explicit Demo Mode Toggle */}
+            <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-md border border-slate-300 text-xs shadow-xs">
+              <button
+                onClick={() => setIsDemo(false)}
+                title="Query live NASA satellite telemetry"
+                className={`px-2.5 py-1 rounded text-[11px] font-semibold transition-colors cursor-pointer ${
+                  !isDemo
+                    ? "bg-slate-900 text-white shadow-xs"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                Live Feeds
+              </button>
+              <button
+                onClick={() => setIsDemo(true)}
+                title="Force synthetic demonstration benchmark"
+                className={`px-2.5 py-1 rounded text-[11px] font-semibold transition-colors cursor-pointer ${
+                  isDemo
+                    ? "bg-amber-600 text-white shadow-xs"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                Demo Mode
+              </button>
+            </div>
+
             {/* Time Window Selector */}
             <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-white border border-slate-300 text-xs shadow-xs">
               <Calendar className="w-3.5 h-3.5 text-slate-500" />
@@ -310,6 +363,9 @@ export default function OverviewPage() {
               onHotspotSelect={(hotspot) => setSelectedHotspot(hotspot)}
               observations={observations}
               isLive={isLive}
+              isDemo={isDemo}
+              loading={loading || refreshing}
+              error={error}
             />
           </div>
 
@@ -336,7 +392,7 @@ export default function OverviewPage() {
           />
         </div>
         <div className="lg:col-span-2 space-y-6">
-          <ActivityTrendChart />
+          <ActivityTrendChart isDemo={isDemo} />
         </div>
       </div>
 

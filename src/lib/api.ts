@@ -173,18 +173,57 @@ export async function fetchObservations(
     };
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    console.warn(`[AgniNet] Backend API unavailable (${errorMsg}). Falling back to local DEMO fixtures.`);
+    console.warn(`[AgniNet] Backend API unavailable (${errorMsg}).`);
+
+    if (params.demo) {
+      return {
+        observations: DEMO_HOTSPOTS,
+        kpis: DEMO_KPIS,
+        isLive: false,
+        dataSource: "DEMO_FIXTURES",
+        status: "demo_fallback",
+        isPartial: false,
+        fetchedAt: new Date().toISOString(),
+        attribution: "AgniNet Synthetic FIRMS Fixtures (Explicit Demo Mode)",
+        notice: "Explicit synthetic demonstration mode active.",
+        error: errorMsg,
+      };
+    }
+
+    const emptyKpis: HotspotKpis = {
+      totalHotspots: 0,
+      totalHotspotsDelta: null,
+      modisCount: 0,
+      modisDelta: null,
+      viirsCount: 0,
+      viirsDelta: null,
+      harmonizedMatches: 0,
+      harmonizedDelta: null,
+      totalFrpGigawatts: 0,
+      avgConfidence: null,
+      activeSensorsOnline: 0,
+      totalSensors: 4,
+      activeFeedCount: 0,
+      totalFeedCount: 4,
+      detectedPlatformCount: 0,
+      totalPlatformCount: 5,
+      detectedSatellites: [],
+      daytimeCount: 0,
+      nighttimeCount: 0,
+      isLive: false,
+      dataSource: "DEMO_FIXTURES",
+    };
 
     return {
-      observations: DEMO_HOTSPOTS,
-      kpis: DEMO_KPIS,
+      observations: [],
+      kpis: emptyKpis,
       isLive: false,
       dataSource: "DEMO_FIXTURES",
       status: "demo_fallback",
       isPartial: false,
       fetchedAt: new Date().toISOString(),
-      attribution: "AgniNet Synthetic FIRMS Fixtures (Backend Offline Demo Fallback)",
-      notice: `BACKEND OFFLINE (${errorMsg}). Showing local demo fixtures. Run backend server on port 8000 for live telemetry.`,
+      attribution: "NASA FIRMS Telemetry Stream Offline",
+      notice: `Live satellite telemetry stream unavailable (${errorMsg}). Silent demo fallback disabled.`,
       error: errorMsg,
     };
   }

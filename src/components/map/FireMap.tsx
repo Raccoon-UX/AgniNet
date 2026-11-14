@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { HotspotObservation, SensorType } from "@/types/fire";
@@ -23,6 +23,9 @@ interface FireMapProps {
   showControlsBar?: boolean;
   observations?: HotspotObservation[];
   isLive?: boolean;
+  isDemo?: boolean;
+  loading?: boolean;
+  error?: string | null;
 }
 
 type BasemapStyle = "satellite" | "light" | "dark";
@@ -51,6 +54,9 @@ export const FireMap: React.FC<FireMapProps> = ({
   showControlsBar = true,
   observations,
   isLive = false,
+  isDemo = false,
+  loading = false,
+  error = null,
 }) => {
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapInstance = useRef<maplibregl.Map | null>(null);
@@ -64,7 +70,19 @@ export const FireMap: React.FC<FireMapProps> = ({
   const [cursorCoords, setCursorCoords] = useState<{ lng: number; lat: number } | null>(null);
   const [zoomLevel, setZoomLevel] = useState<number>(initialZoom);
 
-  const activeHotspots = observations && observations.length > 0 ? observations : DEMO_HOTSPOTS;
+  // Derive activeHotspots strictly without silent fallback:
+  // - If observations array is provided, respect it (including empty array [])
+  // - Only render synthetic demo markers when isDemo is explicitly true
+  // - Never silently substitute failed or empty live observations with demo fixtures
+  const activeHotspots = useMemo(() => {
+    if (observations !== undefined) {
+      return observations;
+    }
+    if (isDemo) {
+      return DEMO_HOTSPOTS;
+    }
+    return [];
+  }, [observations, isDemo]);
 
   // Initialize MapLibre GL with default Satellite Basemap
   useEffect(() => {
@@ -226,11 +244,11 @@ export const FireMap: React.FC<FireMapProps> = ({
             </div>
             <div>
               <span style="color: #94a3b8; display: block; font-size: 9px; text-transform: uppercase;">Confidence</span>
-              <span style="color: #10b981; font-family: monospace;">${hotspot.confidence != null ? `${hotspot.confidence}%` : "Standard"}</span>
+              <span style="color: #10b981; font-family: monospace;">${hotspot.confidence != null ? `${hotspot.confidence}%` : "Not reported"}</span>
             </div>
             <div>
               <span style="color: #94a3b8; display: block; font-size: 9px; text-transform: uppercase;">Acquisition UTC</span>
-              <span style="color: #f1f5f9; font-family: monospace;">${hotspot.acquisitionTimeUtc ?? hotspot.acquisitionDate}</span>
+              <span style="color: #f1f5f9; font-family: monospace;">${hotspot.acquisitionDate ? `${hotspot.acquisitionDate} ` : ""}${hotspot.acquisitionTimeUtc || "Not reported"}</span>
             </div>
           </div>
 
@@ -433,9 +451,23 @@ export const FireMap: React.FC<FireMapProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          <span className={isLive ? "text-emerald-400 font-semibold" : "text-amber-400 font-semibold"}>
-            {isLive ? "NASA FIRMS LIVE (Near Real-Time)" : "DEMO FIXTURES BUFFER"}
-          </span>
+          {isLive ? (
+            <span className="text-emerald-400 font-semibold">
+              NASA FIRMS LIVE ({activeHotspots.length} pixels)
+            </span>
+          ) : isDemo ? (
+            <span className="text-amber-400 font-semibold">
+              DEMO FIXTURES ({activeHotspots.length} synthetic pixels)
+            </span>
+          ) : error ? (
+            <span className="text-red-400 font-semibold">
+              LIVE API ERROR (0 pixels)
+            </span>
+          ) : (
+            <span className="text-slate-400 font-semibold">
+              LIVE FEED ({activeHotspots.length} pixels)
+            </span>
+          )}
           <a
             href="https://firms.modaps.eosdis.nasa.gov/"
             target="_blank"
@@ -447,6 +479,41 @@ export const FireMap: React.FC<FireMapProps> = ({
           </a>
         </div>
       </div>
+
+      {/* Loading Overlay */}
+      {loading && (
+        <div className="absolute inset-0 z-30 bg-[#0b1329]/60 backdrop-blur-xs flex items-center justify-center text-white text-xs font-mono gap-2 pointer-events-none">
+          <RotateCcw className="w-4 h-4 animate-spin text-orange-400" />
+          <span>Querying Satellite Radiometry Telemetry...</span>
+        </div>
+      )}
+
+      {/* API Failure Notice Overlay (Strictly shown when live API fails; never silently replaced with demo) */}
+      {!loading && error && activeHotspots.length === 0 && (
+        <div className="absolute top-14 left-3 right-3 sm:right-auto sm:max-w-md z-20 bg-slate-900/95 border border-red-500/70 rounded-md p-3 text-xs font-mono text-slate-200 shadow-xl backdrop-blur-sm">
+          <div className="flex items-center gap-2 text-red-400 font-semibold mb-1">
+            <span className="w-2 h-2 rounded-full bg-red-500" />
+            <span>Live Satellite Feed Offline / Error</span>
+          </div>
+          <p className="text-[11px] text-slate-300">{error}</p>
+          <p className="text-[10px] text-slate-400 mt-1.5 pt-1.5 border-t border-slate-800">
+            Rendering 0 observation markers. Silent demo substitution is disabled in live mode.
+          </p>
+        </div>
+      )}
+
+      {/* Empty Buffer Notice Overlay (Quiet period or no detections) */}
+      {!loading && !error && activeHotspots.length === 0 && (
+        <div className="absolute top-14 left-3 z-20 bg-slate-900/90 border border-slate-700/80 rounded-md px-3 py-2 text-xs font-mono text-slate-300 shadow-md backdrop-blur-sm">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <span className="font-semibold text-slate-200">Zero Thermal Anomalies Detected</span>
+          </div>
+          <p className="text-[10px] text-slate-400 mt-0.5">
+            No active fire pixels within the selected sector and filter. (Quiet observation period).
+          </p>
+        </div>
+      )}
 
       {/* Bottom Legend (Reference 1 & 2 Hybrid) */}
       <div className="absolute bottom-8 left-3 z-20 bg-white/95 backdrop-blur-sm border border-slate-200 px-3 py-2 rounded-md shadow-sm text-xs text-slate-700 space-y-1.5 hidden md:block">

@@ -255,12 +255,13 @@ export const HotspotTable: React.FC<HotspotTableProps> = ({
 
                     <td className="py-2.5 px-3">
                       <span className="text-emerald-700 font-semibold">
-                        {hotspot.confidence != null ? `${hotspot.confidence}%` : "Nominal"}
+                        {hotspot.confidence != null ? `${hotspot.confidence}%` : "Not reported"}
                       </span>
                     </td>
 
                     <td className="py-2.5 px-3 text-slate-600">
-                      {hotspot.acquisitionTimeUtc ?? hotspot.acquisitionDate}
+                      {hotspot.acquisitionDate ? `${hotspot.acquisitionDate} ` : ""}
+                      {hotspot.acquisitionTimeUtc || "Not reported"}
                     </td>
 
                     <td className="py-2.5 px-3 text-right">

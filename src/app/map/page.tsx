@@ -15,52 +15,92 @@ import {
 } from "lucide-react";
 
 export default function MapPage() {
-  const [observations, setObservations] = useState<HotspotObservation[]>(DEMO_HOTSPOTS);
-  const [selectedHotspot, setSelectedHotspot] = useState<HotspotObservation | null>(DEMO_HOTSPOTS[0]);
+  const [observations, setObservations] = useState<HotspotObservation[]>([]);
+  const [selectedHotspot, setSelectedHotspot] = useState<HotspotObservation | null>(null);
   const [isLive, setIsLive] = useState<boolean>(false);
+  const [isDemo, setIsDemo] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedSource, setSelectedSource] = useState<string>("ALL");
   const [selectedDayRange, setSelectedDayRange] = useState<number>(1);
   const [refreshing, setRefreshing] = useState(false);
 
   const loadMapData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+    setError(null);
     try {
       const res = await fetchObservations({
         source: selectedSource,
         day_range: selectedDayRange,
+        demo: isDemo,
       });
       setObservations(res.observations);
       setIsLive(res.isLive);
       if (res.observations.length > 0) {
         setSelectedHotspot(res.observations[0]);
+      } else {
+        setSelectedHotspot(null);
       }
-    } catch {
-      setObservations(DEMO_HOTSPOTS);
+      if (res.error && !res.isLive) {
+        setError(res.error);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg);
+      if (isDemo) {
+        setObservations(DEMO_HOTSPOTS);
+        setSelectedHotspot(DEMO_HOTSPOTS[0]);
+      } else {
+        setObservations([]);
+        setSelectedHotspot(null);
+      }
       setIsLive(false);
     } finally {
       if (isRefresh) setRefreshing(false);
+      setLoading(false);
     }
-  }, [selectedSource, selectedDayRange]);
+  }, [selectedSource, selectedDayRange, isDemo]);
 
   useEffect(() => {
     let ignore = false;
     async function execute() {
+      setLoading(true);
+      setError(null);
       try {
         const res = await fetchObservations({
           source: selectedSource,
           day_range: selectedDayRange,
+          demo: isDemo,
         });
         if (!ignore) {
           setObservations(res.observations);
           setIsLive(res.isLive);
           if (res.observations.length > 0) {
             setSelectedHotspot(res.observations[0]);
+          } else {
+            setSelectedHotspot(null);
+          }
+          if (res.error && !res.isLive) {
+            setError(res.error);
           }
         }
-      } catch {
+      } catch (err) {
         if (!ignore) {
-          setObservations(DEMO_HOTSPOTS);
+          const msg = err instanceof Error ? err.message : String(err);
+          setError(msg);
+          if (isDemo) {
+            setObservations(DEMO_HOTSPOTS);
+            setSelectedHotspot(DEMO_HOTSPOTS[0]);
+          } else {
+            setObservations([]);
+            setSelectedHotspot(null);
+          }
           setIsLive(false);
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
         }
       }
     }
@@ -69,7 +109,7 @@ export default function MapPage() {
     return () => {
       ignore = true;
     };
-  }, [selectedSource, selectedDayRange]);
+  }, [selectedSource, selectedDayRange, isDemo]);
 
   return (
     <div className="space-y-4">
@@ -79,16 +119,47 @@ export default function MapPage() {
         title="Global Satellite Fire Explorer"
         description="High-resolution interactive visualization of active thermal infrared anomalies captured across NASA EOS (Terra/Aqua MODIS) and JPSS (Suomi-NPP/NOAA-20/21 VIIRS) polar orbits."
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Live Feed vs Explicit Demo Mode Toggle */}
+            <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-md border border-slate-300 text-xs shadow-xs">
+              <button
+                onClick={() => setIsDemo(false)}
+                title="Query live NASA satellite telemetry"
+                className={`px-2.5 py-1 rounded text-[11px] font-semibold transition-colors cursor-pointer ${
+                  !isDemo
+                    ? "bg-slate-900 text-white shadow-xs"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                Live Feeds
+              </button>
+              <button
+                onClick={() => setIsDemo(true)}
+                title="Force synthetic demonstration benchmark"
+                className={`px-2.5 py-1 rounded text-[11px] font-semibold transition-colors cursor-pointer ${
+                  isDemo
+                    ? "bg-amber-600 text-white shadow-xs"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                Demo Mode
+              </button>
+            </div>
+
             {isLive ? (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold">
                 <span className="w-2 h-2 rounded-full bg-emerald-600" />
                 NASA FIRMS LIVE
               </span>
-            ) : (
+            ) : isDemo ? (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono bg-amber-50 text-amber-800 border border-amber-200">
                 <span className="w-2 h-2 rounded-full bg-amber-600" />
                 DEMO TELEMETRY
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono bg-slate-100 text-slate-700 border border-slate-200">
+                <span className="w-2 h-2 rounded-full bg-slate-400" />
+                {error ? "FEED OFFLINE" : "READY"}
               </span>
             )}
 
@@ -154,6 +225,9 @@ export default function MapPage() {
             onHotspotSelect={(h) => setSelectedHotspot(h)}
             observations={observations}
             isLive={isLive}
+            isDemo={isDemo}
+            loading={loading || refreshing}
+            error={error}
           />
 
           <div className="p-3 sci-card text-xs text-slate-500 flex flex-wrap items-center justify-between gap-3 font-mono">
