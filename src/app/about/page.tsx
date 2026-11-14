@@ -7,109 +7,118 @@ import {
   Satellite,
   ShieldCheck,
   Cpu,
-  Code2,
+  ExternalLink,
 } from "lucide-react";
 
 export default function AboutPage() {
   return (
     <div className="space-y-6">
+      {/* Page Header */}
       <PageHeader
-        badge="Project Overview & Mission Concept"
-        title="AgniNet — Unified Satellite Fire Intelligence"
-        description="A NASA Space Apps Challenge 2026 initiative harmonizing multi-sensor spaceborne radiometry for next-generation global wildfire early detection and energy quantification."
+        badge="Mission Architecture / Technical Dossier"
+        title="About AgniNet"
+        description="A NASA Space Apps Challenge 2026 platform harmonizing multi-sensor spaceborne radiometry for next-generation wildfire early warning and energy quantification."
       />
 
       {/* Hero Mission Statement */}
-      <div className="rounded-xl glass-panel-glow p-6 sm:p-8 space-y-4 border border-orange-500/30">
+      <div className="sci-card p-6 sm:p-8 space-y-4">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-orange-500/20 border border-orange-500/30 flex items-center justify-center text-orange-400">
-            <Flame className="w-4 h-4" />
+          <div className="w-8 h-8 rounded-md bg-slate-900 text-white flex items-center justify-center">
+            <Flame className="w-4 h-4 text-orange-400" />
           </div>
-          <span className="font-mono text-xs uppercase tracking-wider text-orange-400 font-semibold">
+          <span className="font-mono text-xs uppercase tracking-wider text-slate-700 font-semibold">
             NASA Space Apps Challenge 2026 &bull; Wildfire Intelligence Track
           </span>
         </div>
 
-        <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
-          The Challenge: Unifying Fragmented Orbital Fire Observations
+        <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+          The Challenge: Harmonizing Fragmented Orbital Radiometry
         </h2>
 
-        <p className="text-sm text-slate-300 leading-relaxed max-w-4xl">
-          Earth observation satellites capture active wildfires from space through thermal infrared radiometric sensors.
-          However, disaster response agencies and environmental scientists currently face a divided data landscape:
-          <strong> NASA MODIS</strong> (Terra/Aqua) provides an indispensable 25-year historical climate baseline at 1km resolution,
-          while <strong>VIIRS</strong> (Suomi-NPP/NOAA-20/21) captures fires at 375m high spatial resolution with different scan angles,
+        <p className="text-sm text-slate-700 leading-relaxed max-w-4xl">
+          Earth observation satellites detect active wildfires from polar orbit through mid-wave and thermal infrared sensors.
+          However, disaster response agencies and environmental scientists face a fragmented data ecosystem:
+          <strong> NASA MODIS</strong> (Terra/Aqua) provides an indispensable 25-year climate baseline at 1000m nadir resolution,
+          while <strong>VIIRS</strong> (Suomi-NPP/NOAA-20/21) captures fires at 375m high spatial resolution with different scan geometries,
           radiometric saturation thresholds, and revisit timings.
         </p>
 
-        <p className="text-sm text-slate-300 leading-relaxed max-w-4xl">
-          <strong>AgniNet</strong> introduces a unified geospatial pipeline that deduplicates overlapping observations, cross-calibrates
-          Fire Radiative Power (FRP in Megawatts), resolves pixel-scale spatial discrepancies, and presents an integrated, real-time
-          wildfire intelligence dashboard for incident responders, climate modelers, and forestry guardians.
+        <p className="text-sm text-slate-700 leading-relaxed max-w-4xl">
+          <strong>AgniNet</strong> implements a scientifically defensible geospatial harmonization pipeline that deduplicates overlapping observations,
+          preserves sensor-specific Fire Radiative Power (MW) without invalid cross-sensor summation, resolves pixel-scale spatial discrepancies,
+          and presents an integrated satellite fire intelligence dashboard for incident commanders, climate modelers, and forestry agencies.
         </p>
       </div>
 
       {/* Architecture Highlights */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="p-5 rounded-xl glass-panel space-y-3">
-          <div className="w-9 h-9 rounded-lg bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
-            <Satellite className="w-5 h-5" />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div className="sci-card p-5 space-y-2.5">
+          <div className="w-8 h-8 rounded-md bg-sky-50 text-sky-800 border border-sky-200 flex items-center justify-center">
+            <Satellite className="w-4 h-4" />
           </div>
-          <h4 className="text-base font-bold text-white">Cross-Sensor Fusion</h4>
-          <p className="text-xs text-slate-400 leading-relaxed">
-            Ingests heterogeneous telemetry streams from MODIS (MOD14/MYD14) and VIIRS (VNP14IMGTDL/VJ114IMGTDL) and aligns them into a harmonized spatio-temporal coordinate lattice.
+          <h4 className="text-sm font-bold text-slate-900">Spatio-Temporal Harmonization</h4>
+          <p className="text-xs text-slate-600 leading-relaxed">
+            Ingests heterogeneous telemetry streams from MODIS (MOD14/MYD14) and VIIRS (VNP14IMGTDL/VJ114IMGTDL) and aligns them into a harmonized coordinate lattice using dynamic footprint modeling.
           </p>
         </div>
 
-        <div className="p-5 rounded-xl glass-panel space-y-3">
-          <div className="w-9 h-9 rounded-lg bg-orange-500/15 border border-orange-500/30 flex items-center justify-center text-orange-400">
-            <Cpu className="w-5 h-5" />
+        <div className="sci-card p-5 space-y-2.5">
+          <div className="w-8 h-8 rounded-md bg-purple-50 text-purple-800 border border-purple-200 flex items-center justify-center">
+            <Cpu className="w-4 h-4" />
           </div>
-          <h4 className="text-base font-bold text-white">Calibrated Radiative Power</h4>
-          <p className="text-xs text-slate-400 leading-relaxed">
-            Standardizes Fire Radiative Power (MW) across different sensor point spread functions to accurately compute total combustion rate, biomass consumption, and atmospheric carbon fluxes.
+          <h4 className="text-sm font-bold text-slate-900">Strict Radiative Flux Separation</h4>
+          <p className="text-xs text-slate-600 leading-relaxed">
+            Preserves MODIS (4.0 µm) and VIIRS (3.74 µm) Fire Radiative Power strictly separately, rejecting unscientific hybrid sums while computing normalized comparative indices.
           </p>
         </div>
 
-        <div className="p-5 rounded-xl glass-panel space-y-3">
-          <div className="w-9 h-9 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-            <ShieldCheck className="w-5 h-5" />
+        <div className="sci-card p-5 space-y-2.5">
+          <div className="w-8 h-8 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center justify-center">
+            <ShieldCheck className="w-4 h-4" />
           </div>
-          <h4 className="text-base font-bold text-white">Open Science & Integrity</h4>
-          <p className="text-xs text-slate-400 leading-relaxed">
-            Built strictly on open scientific principles, explicit provenance tracing, and verifiable sensor calibration curves, ensuring actionable decisions without false alarm contamination.
+          <h4 className="text-sm font-bold text-slate-900">Open Science & Provenance Trust</h4>
+          <p className="text-xs text-slate-600 leading-relaxed">
+            Enforces server-authoritative provenance verification, cryptographically separating verified NASA FIRMS live streams from synthetic demo fixtures.
           </p>
         </div>
       </div>
 
-      {/* Data Attribution & Disclaimers */}
-      <div className="rounded-xl glass-panel p-6 space-y-4">
-        <h3 className="text-base font-semibold text-white flex items-center gap-2">
-          <Code2 className="w-4 h-4 text-orange-400" />
-          Data Sources, Attribution & Phase 1 Scope
+      {/* Data Source & Scientific Attribution Section */}
+      <div className="sci-card p-6 space-y-3">
+        <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+          Data Sources & Scientific Attribution
         </h3>
-
-        <div className="space-y-3 text-xs text-slate-300 leading-relaxed">
-          <div className="p-3.5 rounded-lg bg-slate-900/60 border border-white/5 space-y-1">
-            <strong className="text-white block">NASA FIRMS (Fire Information for Resource Management System):</strong>
-            <p className="text-slate-400">
-              NASA Near Real-Time (NRT) active fire products are distributed by the Land, Atmosphere Near real-time Capability for EOS (LANCE). Data products include MODIS MCD14DL (1km) and VIIRS VNP14IMGTDL / VJ114IMGTDL (375m).
-            </p>
-          </div>
-
-          <div className="p-3.5 rounded-lg bg-slate-900/60 border border-white/5 space-y-1">
-            <strong className="text-white block">NOAA Joint Polar Satellite System (JPSS):</strong>
-            <p className="text-slate-400">
-              Suomi-NPP, NOAA-20, and NOAA-21 operational satellite instrumentation providing day and night thermal infrared observations.
-            </p>
-          </div>
-
-          <div className="p-3.5 rounded-lg bg-amber-500/10 border border-amber-500/25 space-y-1 text-amber-200/90">
-            <strong className="text-amber-300 block">Phase 1 Implementation Note:</strong>
-            <p>
-              This deployment represents Phase 1 of the AgniNet project. All data records, observations, and telemetry metrics rendered in this interface are synthetic demonstration fixtures modeled strictly on real NASA schema definitions. Live NASA API hooks and machine learning fire propagation models are slated for Phase 2.
-            </p>
-          </div>
+        <p className="text-xs text-slate-600 leading-relaxed">
+          AgniNet queries Near Real-Time (NRT) active fire datasets operated by NASA Land, Atmosphere Near real-time Capability for EOS (LANCE) Fire Information for Resource Management System (FIRMS), part of the NASA Earth Observing System Data and Information System (EOSDIS).
+        </p>
+        <div className="pt-2 flex flex-wrap gap-4 text-xs font-mono text-slate-600">
+          <a
+            href="https://firms.modaps.eosdis.nasa.gov/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-slate-800 hover:text-slate-900 underline"
+          >
+            <span>NASA FIRMS Portal</span>
+            <ExternalLink className="w-3 h-3" />
+          </a>
+          <a
+            href="https://earthdata.nasa.gov/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-slate-800 hover:text-slate-900 underline"
+          >
+            <span>NASA Earthdata</span>
+            <ExternalLink className="w-3 h-3" />
+          </a>
+          <a
+            href="https://www.spaceappschallenge.org/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-slate-800 hover:text-slate-900 underline"
+          >
+            <span>NASA Space Apps Challenge 2026</span>
+            <ExternalLink className="w-3 h-3" />
+          </a>
         </div>
       </div>
     </div>

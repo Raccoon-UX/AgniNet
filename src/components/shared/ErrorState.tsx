@@ -1,5 +1,5 @@
 import React from "react";
-import { AlertTriangle, RefreshCw } from "lucide-react";
+import { AlertCircle, RefreshCw } from "lucide-react";
 
 interface ErrorStateProps {
   title?: string;
@@ -9,28 +9,28 @@ interface ErrorStateProps {
 }
 
 export const ErrorState: React.FC<ErrorStateProps> = ({
-  title = "Telemetry Acquisition Error",
-  message = "Failed to stream or parse synthetic satellite hotspot observations. Please verify network or reload data buffers.",
+  title = "Satellite Telemetry Acquisition Error",
+  message = "Failed to stream or parse active fire observations. Please verify network connectivity or check FIRMS API status.",
   onRetry,
   className = "",
 }) => {
   return (
     <div
-      className={`flex flex-col items-center justify-center p-12 text-center rounded-xl border border-red-500/25 bg-red-950/20 backdrop-blur-md ${className}`}
+      className={`flex flex-col items-center justify-center p-8 text-center rounded-lg border border-red-200 bg-red-50/50 ${className}`}
       role="alert"
     >
-      <div className="w-12 h-12 rounded-full border border-red-500/30 flex items-center justify-center bg-red-500/10 mb-4 text-red-400">
-        <AlertTriangle className="w-6 h-6 text-red-400" />
+      <div className="w-10 h-10 rounded-full border border-red-200 flex items-center justify-center bg-red-100 mb-3 text-red-600">
+        <AlertCircle className="w-5 h-5" />
       </div>
-      <h3 className="text-base font-semibold text-red-200">{title}</h3>
-      <p className="mt-1 text-xs text-red-300/80 max-w-md">{message}</p>
+      <h3 className="text-sm font-semibold text-red-900">{title}</h3>
+      <p className="mt-1 text-xs text-red-700 max-w-md leading-relaxed">{message}</p>
       {onRetry && (
         <button
           onClick={onRetry}
-          className="mt-5 inline-flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-red-600 hover:bg-red-500 transition-colors shadow-lg shadow-red-900/30 cursor-pointer"
+          className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-white bg-red-600 hover:bg-red-700 transition-colors shadow-sm cursor-pointer"
         >
           <RefreshCw className="w-3.5 h-3.5" />
-          Retry Acquisition
+          Retry Telemetry Sync
         </button>
       )}
     </div>

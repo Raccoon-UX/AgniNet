@@ -29,7 +29,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   const [mobileOpen, setMobileOpen] = useState<boolean>(false);
 
   return (
-    <div className="min-h-screen bg-[#070d18] text-slate-100 flex flex-col selection:bg-orange-500/30 selection:text-orange-200">
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
       {/* Top Notice Banner */}
       <DemoNoticeBanner
         isLive={isLive}
@@ -45,7 +45,7 @@ export const AppShell: React.FC<AppShellProps> = ({
         onCloseMobile={() => setMobileOpen(false)}
       />
 
-      {/* Top App Header */}
+      {/* Top Navigation Bar */}
       <TopNav
         collapsed={collapsed}
         onOpenMobileMenu={() => setMobileOpen(true)}
@@ -58,23 +58,27 @@ export const AppShell: React.FC<AppShellProps> = ({
 
       {/* Main Content Area */}
       <main
-        className={`flex-1 transition-all duration-300 ${
-          collapsed ? "lg:pl-20" : "lg:pl-64"
+        className={`flex-1 transition-all duration-200 ${
+          collapsed ? "lg:pl-16" : "lg:pl-60"
         } flex flex-col`}
       >
         <div className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-6">
           {children}
         </div>
 
-        {/* Global Footer */}
-        <footer className="mt-auto border-t border-white/5 py-4 px-6 text-center text-xs text-slate-500">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-2 max-w-7xl mx-auto">
-            <p>
-              AgniNet &bull; Unified Satellite Fire Intelligence &bull; NASA Space Apps Challenge 2026
-            </p>
-            <p className="font-mono text-[11px] text-slate-500">
-              NASA FIRMS MODIS (1km) & VIIRS (375m) Telemetry Harmonization Engine
-            </p>
+        {/* Professional Scientific Footer */}
+        <footer className="mt-auto border-t border-slate-200 bg-white py-4 px-6 text-xs text-slate-500">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 max-w-7xl mx-auto">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-slate-700">AgniNet</span>
+              <span>&bull;</span>
+              <span>NASA Space Apps Challenge 2026</span>
+              <span>&bull;</span>
+              <span>Near Real-Time Satellite Radiometry</span>
+            </div>
+            <div className="font-mono text-[11px] text-slate-500">
+              NASA EOSDIS LANCE FIRMS &bull; MODIS (MOD14/MYD14) &bull; VIIRS (VNP14IMGTDL/VJ114IMGTDL)
+            </div>
           </div>
         </footer>
       </main>

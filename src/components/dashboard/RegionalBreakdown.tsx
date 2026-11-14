@@ -3,52 +3,51 @@
 import React from "react";
 import Link from "next/link";
 import { DEMO_REGIONS } from "@/data/fixtures";
-import { formatFRP } from "@/lib/utils";
 import { Globe, ArrowUpRight, TrendingDown, Minus, ExternalLink } from "lucide-react";
 
 export const RegionalBreakdown: React.FC = () => {
   return (
-    <div className="rounded-xl glass-panel p-5 flex flex-col space-y-4">
-      <div className="flex items-center justify-between pb-3 border-b border-white/5">
+    <div className="bg-white border border-slate-200 rounded-lg p-4 sm:p-5 shadow-sm space-y-4">
+      <div className="flex items-center justify-between pb-3 border-b border-slate-200">
         <div>
           <div className="flex items-center gap-2">
-            <Globe className="w-4 h-4 text-orange-400" />
-            <h3 className="text-base font-semibold text-white">
-              Global Fire Regimes & Biome Hotspots
+            <Globe className="w-4 h-4 text-slate-700" />
+            <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wider">
+              Regional Fire Regimes & Biomes
             </h3>
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Real-time regional active fire density and peak radiative intensity
+          <p className="text-xs text-slate-500 mt-0.5">
+            Geographic hotspot distribution across continental monitoring sectors
           </p>
         </div>
         <Link
           href="/map"
-          className="text-xs text-orange-400 hover:text-orange-300 font-medium flex items-center gap-1"
+          className="text-xs text-slate-700 hover:text-slate-900 font-medium flex items-center gap-1"
         >
-          <span>Full Map</span>
-          <ExternalLink className="w-3 h-3" />
+          <span>Map View</span>
+          <ExternalLink className="w-3 h-3 text-slate-400" />
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {DEMO_REGIONS.map((region) => {
           return (
             <div
               key={region.regionId}
-              className="p-3.5 rounded-lg bg-slate-900/60 border border-white/5 hover:border-orange-500/30 transition-all group flex flex-col justify-between"
+              className="p-3 rounded-md border border-slate-200 bg-slate-50/60 hover:bg-slate-50 hover:border-slate-300 transition-colors flex flex-col justify-between"
             >
               <div>
                 <div className="flex items-center justify-between">
-                  <h4 className="font-semibold text-sm text-slate-200 group-hover:text-orange-400 transition-colors">
+                  <h4 className="font-semibold text-xs text-slate-900">
                     {region.regionName}
                   </h4>
                   <span
-                    className={`inline-flex items-center gap-0.5 text-[10px] font-mono font-medium px-1.5 py-0.5 rounded ${
+                    className={`inline-flex items-center gap-0.5 text-[9px] font-mono font-medium px-1.5 py-0.5 rounded ${
                       region.trend === "rising"
-                        ? "bg-red-500/15 text-red-400 border border-red-500/20"
+                        ? "bg-red-50 text-red-700 border border-red-200"
                         : region.trend === "declining"
-                        ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20"
-                        : "bg-slate-700/40 text-slate-400 border border-slate-600/30"
+                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                        : "bg-slate-100 text-slate-600 border border-slate-200"
                     }`}
                   >
                     {region.trend === "rising" && <ArrowUpRight className="w-3 h-3" />}
@@ -58,24 +57,27 @@ export const RegionalBreakdown: React.FC = () => {
                   </span>
                 </div>
 
-                <p className="mt-1 text-[11px] text-slate-400 line-clamp-1">
-                  {region.dominantLandCover}
-                </p>
+                <div className="mt-2 text-xs font-mono">
+                  <div className="flex items-center justify-between text-slate-600">
+                    <span>Hotspot Pixels:</span>
+                    <span className="font-semibold text-slate-900">
+                      {region.activeHotspots.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-slate-500 text-[11px] mt-0.5">
+                    <span>Peak Single-Fire:</span>
+                    <span className="text-orange-700 font-medium">
+                      {region.highestFrpMw.toFixed(1)} MW FRP
+                    </span>
+                  </div>
+                </div>
               </div>
 
-              <div className="mt-3 pt-2.5 border-t border-white/5 flex items-center justify-between text-xs">
-                <div>
-                  <span className="text-[10px] text-slate-400 block">Active Hotspots</span>
-                  <span className="font-mono font-semibold text-slate-100">
-                    {region.activeHotspots.toLocaleString()}
-                  </span>
-                </div>
-                <div className="text-right">
-                  <span className="text-[10px] text-slate-400 block">Peak FRP</span>
-                  <span className="font-mono font-semibold text-orange-400">
-                    {formatFRP(region.highestFrpMw)}
-                  </span>
-                </div>
+              <div className="mt-2.5 pt-2 border-t border-slate-200/80 flex items-center justify-between text-[10px] text-slate-500">
+                <span className="truncate max-w-[120px]">{region.dominantLandCover}</span>
+                <span className="font-mono text-slate-400">
+                  {region.centerLat > 0 ? `${region.centerLat}°N` : `${Math.abs(region.centerLat)}°S`}
+                </span>
               </div>
             </div>
           );

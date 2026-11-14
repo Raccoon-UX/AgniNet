@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Satellite, CheckCircle, Clock, AlertCircle } from "lucide-react";
+import { Satellite, CheckCircle } from "lucide-react";
 
 interface SatelliteInfo {
   name: string;
@@ -11,7 +11,7 @@ interface SatelliteInfo {
   resolution: string;
   altitude: string;
   orbitType: string;
-  nextPassUtc: string;
+  crossingTime: string;
 }
 
 const SATELLITE_CONSTELLATION: SatelliteInfo[] = [
@@ -20,50 +20,50 @@ const SATELLITE_CONSTELLATION: SatelliteInfo[] = [
     shortCode: "Terra",
     sensor: "MODIS",
     feedSource: "MODIS_NRT",
-    resolution: "1000m",
+    resolution: "1000m nadir",
     altitude: "705 km",
-    orbitType: "Sun-synchronous (10:30 descend)",
-    nextPassUtc: "In 48m",
+    orbitType: "Sun-synchronous polar",
+    crossingTime: "10:30 AM (Descending)",
   },
   {
     name: "Aqua (EOS PM-1)",
     shortCode: "Aqua",
     sensor: "MODIS",
     feedSource: "MODIS_NRT",
-    resolution: "1000m",
+    resolution: "1000m nadir",
     altitude: "705 km",
-    orbitType: "Sun-synchronous (13:30 ascend)",
-    nextPassUtc: "In 1h 12m",
+    orbitType: "Sun-synchronous polar",
+    crossingTime: "01:30 PM (Ascending)",
   },
   {
     name: "Suomi-NPP",
     shortCode: "Suomi-NPP",
     sensor: "VIIRS",
     feedSource: "VIIRS_SNPP_NRT",
-    resolution: "375m",
+    resolution: "375m nadir",
     altitude: "824 km",
-    orbitType: "Sun-synchronous (13:30 ascend)",
-    nextPassUtc: "In 22m",
+    orbitType: "Sun-synchronous polar",
+    crossingTime: "01:30 PM (Ascending)",
   },
   {
     name: "NOAA-20 (JPSS-1)",
     shortCode: "NOAA-20",
     sensor: "VIIRS",
     feedSource: "VIIRS_NOAA20_NRT",
-    resolution: "375m",
+    resolution: "375m nadir",
     altitude: "824 km",
-    orbitType: "Sun-synchronous (13:30 ascend)",
-    nextPassUtc: "In 35m",
+    orbitType: "Sun-synchronous polar",
+    crossingTime: "01:30 PM (Ascending)",
   },
   {
     name: "NOAA-21 (JPSS-2)",
     shortCode: "NOAA-21",
     sensor: "VIIRS",
     feedSource: "VIIRS_NOAA21_NRT",
-    resolution: "375m",
+    resolution: "375m nadir",
     altitude: "824 km",
-    orbitType: "Sun-synchronous (13:30 ascend)",
-    nextPassUtc: "In 1h 05m",
+    orbitType: "Sun-synchronous polar",
+    crossingTime: "01:30 PM (Ascending)",
   },
 ];
 
@@ -71,127 +71,99 @@ interface ConstellationStatusProps {
   detectedSatellites?: string[];
   activeFeedCount?: number;
   totalFeedCount?: number;
-  succeededSources?: string[];
-  failedSources?: string[];
   isLive?: boolean;
 }
 
 export const ConstellationStatus: React.FC<ConstellationStatusProps> = ({
-  detectedSatellites,
-  activeFeedCount,
+  detectedSatellites = [],
+  activeFeedCount = 4,
   totalFeedCount = 4,
-  succeededSources,
-  failedSources,
   isLive = false,
 }) => {
-  const feedCount = activeFeedCount ?? (succeededSources ? succeededSources.length : (isLive ? 4 : 4));
-  const detectedPlatforms = detectedSatellites ?? (isLive ? [] : ["Terra", "Aqua", "Suomi-NPP", "NOAA-20", "NOAA-21"]);
-
   return (
-    <div className="rounded-xl glass-panel p-5 flex flex-col space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-white/5 gap-2">
+    <div className="bg-white border border-slate-200 rounded-lg p-4 sm:p-5 shadow-sm space-y-3">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-3 border-b border-slate-200">
         <div>
           <div className="flex items-center gap-2">
-            <Satellite className="w-4 h-4 text-cyan-400" />
-            <h3 className="text-base font-semibold text-white">
-              Spacecraft Constellation & Feed Ingestion Health
+            <Satellite className="w-4 h-4 text-slate-700" />
+            <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wider">
+              Spacecraft Constellation & Orbit Parameters
             </h3>
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Independent tracking: 4 NASA FIRMS NRT data feeds &bull; 5 physical orbital platforms
+          <p className="text-xs text-slate-500 mt-0.5">
+            Operational status and telemetry feeds across NASA EOS and JPSS polar orbiting assets
           </p>
         </div>
-        <div>
-          {isLive ? (
-            <div className="flex items-center gap-2 font-mono text-xs text-cyan-400 bg-cyan-500/10 px-2.5 py-1 rounded-md border border-cyan-500/20">
-              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-              <span>
-                {feedCount}/{totalFeedCount} FEEDS ACTIVE &bull; {detectedPlatforms.length}/5 PLATFORMS OBSERVED
-              </span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 font-mono text-xs text-amber-300 bg-amber-500/10 px-2.5 py-1 rounded-md border border-amber-500/20">
-              <span className="w-2 h-2 rounded-full bg-amber-400" />
-              <span>SYNTHETIC TELEMETRY &bull; 5 PLATFORMS SIMULATED</span>
-            </div>
-          )}
+
+        <div className="flex items-center gap-2 text-xs font-mono">
+          <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 font-semibold">
+            {activeFeedCount} / {totalFeedCount} {isLive ? "NASA FIRMS Feeds" : "Telemetry Feeds"} Active
+          </span>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-        {SATELLITE_CONSTELLATION.map((sat) => {
-          const hasDetections = detectedPlatforms.some((dp) =>
-            dp.toLowerCase().includes(sat.shortCode.toLowerCase())
-          );
-          const feedFailed = failedSources?.includes(sat.feedSource);
-          const feedSucceeded = succeededSources
-            ? succeededSources.includes(sat.feedSource)
-            : isLive;
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-xs">
+          <thead>
+            <tr className="border-b border-slate-200 text-slate-500 font-mono text-[10px] uppercase tracking-wider bg-slate-50">
+              <th className="py-2 px-3">Spacecraft</th>
+              <th className="py-2 px-3">Sensor</th>
+              <th className="py-2 px-3">Resolution</th>
+              <th className="py-2 px-3">Equator Crossing</th>
+              <th className="py-2 px-3">Altitude</th>
+              <th className="py-2 px-3 text-right">Telemetry Status</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 font-mono">
+            {SATELLITE_CONSTELLATION.map((sat) => {
+              const isDetected =
+                detectedSatellites.length === 0 ||
+                detectedSatellites.includes(sat.shortCode);
 
-          return (
-            <div
-              key={sat.name}
-              className={`p-3 rounded-lg bg-slate-900/60 border space-y-2 relative overflow-hidden group transition-all ${
-                hasDetections
-                  ? "border-emerald-500/30 hover:border-emerald-500/50"
-                  : feedFailed
-                  ? "border-red-500/30 hover:border-red-500/50"
-                  : "border-white/5 hover:border-cyan-500/30"
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span
-                  className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold ${
-                    sat.sensor === "VIIRS"
-                      ? "bg-cyan-500/15 text-cyan-300 border border-cyan-500/30"
-                      : "bg-purple-500/15 text-purple-300 border border-purple-500/30"
-                  }`}
-                >
-                  {sat.sensor} &bull; {sat.resolution}
-                </span>
+              const isVIIRS = sat.sensor === "VIIRS";
 
-                {hasDetections ? (
-                  <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-400 font-mono">
-                    <CheckCircle className="w-3 h-3" />
-                    Observed
-                  </span>
-                ) : feedFailed ? (
-                  <span className="flex items-center gap-1 text-[10px] font-medium text-red-400 font-mono">
-                    <AlertCircle className="w-3 h-3" />
-                    Feed Error
-                  </span>
-                ) : isLive && feedSucceeded ? (
-                  <span className="text-[10px] font-medium text-slate-400 font-mono">
-                    In Orbit / Quiet
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1 text-[10px] font-medium text-amber-300 font-mono">
-                    Simulated
-                  </span>
-                )}
-              </div>
-
-              <div>
-                <h5 className="font-semibold text-xs text-slate-200 truncate">
-                  {sat.name}
-                </h5>
-                <p className="text-[10px] text-slate-400 font-mono mt-0.5">
-                  Feed: {sat.feedSource}
-                </p>
-              </div>
-
-              <div className="pt-2 border-t border-white/5 flex items-center justify-between text-[10px] text-slate-400">
-                <span className="flex items-center gap-1">
-                  <Clock className="w-3 h-3 text-cyan-400" />
-                  Next Swath:
-                </span>
-                <span className="font-mono text-slate-300 font-medium">
-                  {sat.nextPassUtc}
-                </span>
-              </div>
-            </div>
-          );
-        })}
+              return (
+                <tr key={sat.shortCode} className="hover:bg-slate-50/70 transition-colors">
+                  <td className="py-2.5 px-3 font-semibold text-slate-900">
+                    {sat.name}
+                  </td>
+                  <td className="py-2.5 px-3">
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                        isVIIRS
+                          ? "bg-sky-50 text-sky-800 border border-sky-200"
+                          : "bg-purple-50 text-purple-800 border border-purple-200"
+                      }`}
+                    >
+                      {sat.sensor}
+                    </span>
+                  </td>
+                  <td className="py-2.5 px-3 text-slate-600">
+                    {sat.resolution}
+                  </td>
+                  <td className="py-2.5 px-3 text-slate-600">
+                    {sat.crossingTime}
+                  </td>
+                  <td className="py-2.5 px-3 text-slate-500">
+                    {sat.altitude}
+                  </td>
+                  <td className="py-2.5 px-3 text-right">
+                    {isDetected ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700 font-medium">
+                        <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                        Nominal Stream
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-slate-400">
+                        Standby
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   );

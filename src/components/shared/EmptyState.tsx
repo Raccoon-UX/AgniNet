@@ -10,27 +10,27 @@ interface EmptyStateProps {
 }
 
 export const EmptyState: React.FC<EmptyStateProps> = ({
-  title = "No Hotspots Found",
-  description = "No active satellite detections match your current filter criteria or bounding box.",
+  title = "No Satellite Detections Found",
+  description = "No active thermal anomalies match your current spatial, sensor, or threshold filter criteria.",
   onReset,
   resetLabel = "Reset Filters",
   className = "",
 }) => {
   return (
     <div
-      className={`flex flex-col items-center justify-center p-12 text-center rounded-xl glass-panel ${className}`}
+      className={`flex flex-col items-center justify-center p-8 text-center rounded-lg border border-slate-200 bg-white ${className}`}
     >
-      <div className="w-12 h-12 rounded-full border border-slate-700/60 flex items-center justify-center bg-slate-800/50 mb-4 text-slate-400">
-        <FilterX className="w-6 h-6 text-slate-400" />
+      <div className="w-10 h-10 rounded-full border border-slate-200 flex items-center justify-center bg-slate-50 mb-3 text-slate-400">
+        <FilterX className="w-5 h-5 text-slate-400" />
       </div>
-      <h3 className="text-base font-semibold text-slate-200">{title}</h3>
-      <p className="mt-1 text-xs text-slate-400 max-w-sm">{description}</p>
+      <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
+      <p className="mt-1 text-xs text-slate-500 max-w-sm leading-relaxed">{description}</p>
       {onReset && (
         <button
           onClick={onReset}
-          className="mt-5 inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium text-orange-300 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 transition-all cursor-pointer"
+          className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 transition-colors cursor-pointer"
         >
-          <RotateCcw className="w-3.5 h-3.5" />
+          <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
           {resetLabel}
         </button>
       )}

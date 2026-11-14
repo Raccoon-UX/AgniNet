@@ -1,5 +1,4 @@
 import React from "react";
-import { Sparkles } from "lucide-react";
 
 interface PageHeaderProps {
   badge?: string;
@@ -9,27 +8,27 @@ interface PageHeaderProps {
 }
 
 export const PageHeader: React.FC<PageHeaderProps> = ({
-  badge = "AgniNet Intelligence Platform",
+  badge = "Earth Observation / Satellite Fire Radiometry",
   title,
   description,
   action,
 }) => {
   return (
-    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-6 border-b border-white/5">
+    <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 pb-4 border-b border-slate-200">
       <div>
-        <div className="flex items-center gap-2 mb-1.5">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-orange-500/10 text-orange-400 border border-orange-500/20">
-            <Sparkles className="w-3 h-3" />
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-[10px] font-mono font-semibold tracking-wider uppercase text-slate-500">
             {badge}
           </span>
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
-            NASA SPACE APPS 2026
+          <span className="text-slate-300">&bull;</span>
+          <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">
+            NASA Space Apps 2026
           </span>
         </div>
-        <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-white">
+        <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
           {title}
         </h1>
-        <p className="mt-1 text-sm text-slate-400 max-w-2xl leading-relaxed">
+        <p className="mt-1 text-xs sm:text-sm text-slate-600 max-w-3xl leading-relaxed">
           {description}
         </p>
       </div>

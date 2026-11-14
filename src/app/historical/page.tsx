@@ -20,11 +20,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Database,
-  Flame,
   Globe2,
   RefreshCw,
   Scale,
-  Sparkles,
   TrendingUp,
   Zap,
 } from "lucide-react";
@@ -104,9 +102,9 @@ export default function HistoricalAnalysisPage() {
         fetchHistoricalEvents({
           start_date: qStart,
           end_date: qEnd,
+          classification: classificationFilter !== "ALL" ? classificationFilter : undefined,
           page: currentPage,
-          page_size: 15,
-          classification: classificationFilter === "ALL" ? undefined : classificationFilter,
+          page_size: 20,
         }),
       ]);
 
@@ -117,13 +115,12 @@ export default function HistoricalAnalysisPage() {
       setEvents(evRes.events);
       setTotalPages(evRes.total_pages);
       setTotalEvents(evRes.total_events);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(msg);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load historical analytics.");
     } finally {
       setLoading(false);
     }
-  }, [startDate, endDate, granularity, currentPage, classificationFilter]);
+  }, [startDate, endDate, granularity, classificationFilter, currentPage]);
 
   useEffect(() => {
     let ignore = false;
@@ -140,69 +137,72 @@ export default function HistoricalAnalysisPage() {
 
   return (
     <div className="space-y-6">
+      {/* Page Header */}
       <PageHeader
-        badge="Multi-Temporal Fire Intelligence"
-        title="Historical Active Fire Climatology & Analytics"
-        description="Persistent multi-month and multi-annual satellite active fire synthesis harmonizing NASA EOS MODIS and JPSS VIIRS observations with strict radiative energy preservation."
-      />
-
-      {/* Control Strip & Query Filters */}
-      <div className="rounded-xl glass-panel p-4 space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-white/5">
-          {/* Quick Date Range Buttons */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-xs text-slate-400 flex items-center gap-1.5 mr-1 font-mono uppercase text-[10px]">
-              <Calendar className="w-3.5 h-3.5 text-orange-400" />
-              Range:
-            </span>
-            {(["30D", "90D", "SEASON_2026", "ALL"] as const).map((r) => (
-              <button
-                key={r}
-                onClick={() => applyQuickRange(r)}
-                className={`px-2.5 py-1 rounded text-xs font-mono font-medium transition-all cursor-pointer ${
-                  quickRange === r
-                    ? "bg-orange-500 text-white shadow-sm shadow-orange-500/20 border border-orange-400"
-                    : "bg-slate-900/80 text-slate-300 hover:bg-slate-800 border border-white/5"
-                }`}
-              >
-                {r === "30D" ? "Last 30 Days" : r === "90D" ? "Last 90 Days" : r === "SEASON_2026" ? "2026 Season" : "All Archives"}
-              </button>
-            ))}
-          </div>
-
-          {/* Granularity Switch */}
-          <div className="flex items-center gap-1 p-1 bg-slate-900/90 rounded-lg border border-white/5 text-xs">
-            <span className="text-[10px] text-slate-500 uppercase font-mono px-2">Bin:</span>
-            {(["day", "week", "month"] as const).map((g) => (
-              <button
-                key={g}
-                onClick={() => setGranularity(g)}
-                className={`px-2.5 py-0.5 rounded text-xs font-medium transition-all cursor-pointer ${
-                  granularity === g
-                    ? "bg-orange-500/20 text-orange-300 border border-orange-500/30"
-                    : "text-slate-400 hover:text-slate-200"
-                }`}
-              >
-                {g.charAt(0).toUpperCase() + g.slice(1)}
-              </button>
-            ))}
-          </div>
-
-          {/* Refresh Action */}
+        badge="Historical Analytics / Temporal Archive"
+        title="Historical Satellite Fire Intelligence"
+        description="Multi-temporal activity trends, cross-sensor FRP separation, and regional biome fire regimes modeled from persistent satellite archives."
+        action={
           <button
             onClick={() => loadHistoricalData()}
             disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 border border-white/8 text-xs font-medium cursor-pointer transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 shadow-sm transition-colors cursor-pointer"
           >
-            <RefreshCw className={`w-3.5 h-3.5 text-orange-400 ${loading ? "animate-spin" : ""}`} />
-            Refresh
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-slate-900" : ""}`} />
+            <span>Refresh Archive</span>
           </button>
+        }
+      />
+
+      {/* Query Filter and Window Controls */}
+      <div className="sci-card p-4 space-y-3 text-xs">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* Quick Range Selector */}
+          <div className="flex items-center gap-1.5">
+            <Calendar className="w-3.5 h-3.5 text-slate-500" />
+            <span className="font-semibold text-slate-600 uppercase tracking-wider text-[11px]">Interval:</span>
+            <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-md border border-slate-200">
+              {(["30D", "90D", "SEASON_2026", "ALL"] as const).map((r) => (
+                <button
+                  key={r}
+                  onClick={() => applyQuickRange(r)}
+                  className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors cursor-pointer ${
+                    quickRange === r
+                      ? "bg-white text-slate-900 shadow-sm"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  {r === "SEASON_2026" ? "2026 Season" : r}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Granularity Selector */}
+          <div className="flex items-center gap-1.5">
+            <span className="font-semibold text-slate-600 uppercase tracking-wider text-[11px]">Binning:</span>
+            <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-md border border-slate-200">
+              {(["day", "week", "month"] as const).map((g) => (
+                <button
+                  key={g}
+                  onClick={() => setGranularity(g)}
+                  className={`px-2.5 py-1 rounded text-[11px] font-medium uppercase transition-colors cursor-pointer ${
+                    granularity === g
+                      ? "bg-white text-slate-900 shadow-sm"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  {g}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* Date Inputs & Data Provenance Banner */}
-        <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-200 text-xs">
           <div className="flex items-center gap-2">
-            <span className="text-slate-400 text-xs">Window:</span>
+            <span className="text-slate-600 font-medium">Date Window:</span>
             <input
               type="date"
               value={startDate}
@@ -210,9 +210,9 @@ export default function HistoricalAnalysisPage() {
                 setStartDate(e.target.value);
                 setQuickRange("ALL");
               }}
-              className="px-2.5 py-1 rounded bg-slate-900 border border-white/10 text-slate-200 text-xs font-mono"
+              className="px-2 py-1 rounded bg-slate-50 border border-slate-300 text-slate-800 text-xs font-mono"
             />
-            <span className="text-slate-500">&rarr;</span>
+            <span className="text-slate-400">&rarr;</span>
             <input
               type="date"
               value={endDate}
@@ -220,19 +220,19 @@ export default function HistoricalAnalysisPage() {
                 setEndDate(e.target.value);
                 setQuickRange("ALL");
               }}
-              className="px-2.5 py-1 rounded bg-slate-900 border border-white/10 text-slate-200 text-xs font-mono"
+              className="px-2 py-1 rounded bg-slate-50 border border-slate-300 text-slate-800 text-xs font-mono"
             />
           </div>
 
           {summary && (
-            <div className="flex items-center gap-2 font-mono text-[11px] text-slate-400">
+            <div className="flex items-center gap-2 font-mono text-[11px]">
               <span
-                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded ${
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded font-semibold ${
                   summary.is_live
-                    ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                    ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
                     : summary.data_source === "MIXED_HISTORICAL_ARCHIVE"
-                    ? "bg-purple-500/10 text-purple-400 border border-purple-500/20"
-                    : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                    ? "bg-indigo-50 text-indigo-800 border border-indigo-200"
+                    : "bg-amber-50 text-amber-800 border border-amber-200"
                 }`}
                 title={summary.provenance}
               >
@@ -249,15 +249,11 @@ export default function HistoricalAnalysisPage() {
 
       {/* Error Banner */}
       {error && (
-        <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs space-y-2">
-          <div className="font-semibold flex items-center gap-2">
-            <Flame className="w-4 h-4 text-red-400" />
-            Historical Archive Query Failed
-          </div>
-          <p>{error}</p>
+        <div className="p-3.5 rounded-md bg-red-50 border border-red-200 text-red-800 text-xs flex items-center justify-between">
+          <span>Failed to query historical archive: {error}</span>
           <button
             onClick={() => loadHistoricalData()}
-            className="px-3 py-1 rounded bg-red-500/20 text-red-200 hover:bg-red-500/30 border border-red-500/30 cursor-pointer text-xs"
+            className="underline hover:text-red-900 font-medium cursor-pointer"
           >
             Retry Query
           </button>
@@ -267,55 +263,55 @@ export default function HistoricalAnalysisPage() {
       {/* KPI Cards Strip */}
       {summary && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <div className="p-3.5 rounded-xl bg-slate-900/60 border border-white/5 space-y-1">
-            <span className="text-[10px] uppercase font-mono text-slate-400 block">Unified Events</span>
-            <span className="text-2xl font-bold font-mono text-white">{summary.total_events.toLocaleString()}</span>
-            <span className="text-[10px] text-slate-500 block">Harmonized clusters</span>
+          <div className="p-3.5 rounded-lg bg-white border border-slate-200 shadow-sm space-y-1">
+            <span className="text-[10px] uppercase font-mono text-slate-500 block">Unified Events</span>
+            <span className="text-2xl font-bold font-mono text-slate-900">{summary.total_events.toLocaleString()}</span>
+            <span className="text-[10px] text-slate-400 block">Harmonized clusters</span>
           </div>
 
-          <div className="p-3.5 rounded-xl bg-slate-900/60 border border-white/5 space-y-1">
-            <span className="text-[10px] uppercase font-mono text-slate-400 block">Raw Hotspots</span>
-            <span className="text-2xl font-bold font-mono text-slate-200">{summary.total_observations.toLocaleString()}</span>
-            <span className="text-[10px] text-slate-500 block">MODIS + VIIRS pixels</span>
+          <div className="p-3.5 rounded-lg bg-white border border-slate-200 shadow-sm space-y-1">
+            <span className="text-[10px] uppercase font-mono text-slate-500 block">Raw Hotspots</span>
+            <span className="text-2xl font-bold font-mono text-slate-800">{summary.total_observations.toLocaleString()}</span>
+            <span className="text-[10px] text-slate-400 block">MODIS + VIIRS pixels</span>
           </div>
 
-          <div className="p-3.5 rounded-xl bg-slate-900/60 border border-emerald-500/20 space-y-1">
-            <span className="text-[10px] uppercase font-mono text-emerald-400 block">Dual-Matched</span>
-            <span className="text-2xl font-bold font-mono text-emerald-300">{summary.matched_events.toLocaleString()}</span>
-            <span className="text-[10px] text-emerald-500/80 block">Cross-sensor verified</span>
+          <div className="p-3.5 rounded-lg bg-white border border-emerald-200 shadow-sm space-y-1">
+            <span className="text-[10px] uppercase font-mono text-emerald-700 block">Dual-Matched</span>
+            <span className="text-2xl font-bold font-mono text-emerald-800">{summary.matched_events.toLocaleString()}</span>
+            <span className="text-[10px] text-emerald-600 block">Cross-sensor verified</span>
           </div>
 
-          <div className="p-3.5 rounded-xl bg-slate-900/60 border border-purple-500/20 space-y-1">
-            <span className="text-[10px] uppercase font-mono text-purple-400 block">MODIS FRP</span>
-            <span className="text-2xl font-bold font-mono text-purple-300">{summary.modis_frp_gigawatts} GW</span>
-            <span className="text-[10px] text-purple-400/70 block">4.0&mu;m radiant power</span>
+          <div className="p-3.5 rounded-lg bg-white border border-purple-200 shadow-sm space-y-1">
+            <span className="text-[10px] uppercase font-mono text-purple-700 block">MODIS FRP</span>
+            <span className="text-2xl font-bold font-mono text-purple-900">{summary.modis_frp_gigawatts} GW</span>
+            <span className="text-[10px] text-purple-600 block">4.0&mu;m radiant power</span>
           </div>
 
-          <div className="p-3.5 rounded-xl bg-slate-900/60 border border-cyan-500/20 space-y-1">
-            <span className="text-[10px] uppercase font-mono text-cyan-400 block">VIIRS FRP</span>
-            <span className="text-2xl font-bold font-mono text-cyan-300">{summary.viirs_frp_gigawatts} GW</span>
-            <span className="text-[10px] text-cyan-400/70 block">3.74&mu;m radiant power</span>
+          <div className="p-3.5 rounded-lg bg-white border border-sky-200 shadow-sm space-y-1">
+            <span className="text-[10px] uppercase font-mono text-sky-700 block">VIIRS FRP</span>
+            <span className="text-2xl font-bold font-mono text-sky-900">{summary.viirs_frp_gigawatts} GW</span>
+            <span className="text-[10px] text-sky-600 block">3.74&mu;m radiant power</span>
           </div>
 
-          <div className="p-3.5 rounded-xl bg-slate-900/60 border border-amber-500/20 space-y-1">
-            <span className="text-[10px] uppercase font-mono text-amber-400 block">Peak Fire Day</span>
-            <span className="text-base font-bold font-mono text-amber-200 truncate block">
+          <div className="p-3.5 rounded-lg bg-white border border-amber-200 shadow-sm space-y-1">
+            <span className="text-[10px] uppercase font-mono text-amber-700 block">Peak Fire Day</span>
+            <span className="text-base font-bold font-mono text-amber-900 truncate block">
               {summary.peak_day || "N/A"}
             </span>
-            <span className="text-[10px] text-amber-400/70 block">{summary.peak_day_events} events</span>
+            <span className="text-[10px] text-amber-600 block">{summary.peak_day_events} events</span>
           </div>
         </div>
       )}
 
       {/* Analytics Tabs Navigation */}
-      <div className="flex border-b border-white/5 space-x-1 text-xs">
+      <div className="flex border-b border-slate-200 space-x-1 text-xs">
         {(
           [
             { id: "trends", label: "Temporal Activity Trends", icon: TrendingUp },
             { id: "frp", label: "Radiative Power Analysis (Separated)", icon: Zap },
             { id: "regions", label: "Regional Fire Regimes", icon: Globe2 },
             { id: "sensors", label: "Spacecraft Constellation", icon: Scale },
-            { id: "events", label: `Harmonized Events (${totalEvents})`, icon: Sparkles },
+            { id: "events", label: `Harmonized Events (${totalEvents})`, icon: BarChart3 },
           ] as const
         ).map((tab) => {
           const Icon = tab.icon;
@@ -324,10 +320,10 @@ export default function HistoricalAnalysisPage() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-1.5 px-3.5 py-2.5 font-medium border-b-2 transition-all cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3.5 py-2.5 font-medium border-b-2 transition-colors cursor-pointer ${
                 isActive
-                  ? "border-orange-500 text-orange-400 bg-orange-500/5 font-semibold"
-                  : "border-transparent text-slate-400 hover:text-slate-200 hover:border-white/10"
+                  ? "border-slate-900 text-slate-900 font-semibold"
+                  : "border-transparent text-slate-500 hover:text-slate-800"
               }`}
             >
               <Icon className="w-3.5 h-3.5" />
@@ -339,14 +335,14 @@ export default function HistoricalAnalysisPage() {
 
       {/* TAB 1: Temporal Activity Trends */}
       {activeTab === "trends" && (
-        <div className="rounded-xl glass-panel p-6 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-white/5">
+        <div className="sci-card p-5 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-200">
             <div>
-              <h3 className="text-base font-semibold text-white flex items-center gap-2">
-                <BarChart3 className="w-4 h-4 text-orange-400" />
+              <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-slate-700" />
                 Harmonized Fire Events vs Raw Sensor Hotspots
               </h3>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-xs text-slate-500 mt-0.5">
                 Compares deduplicated unified event counts with raw MODIS + VIIRS observation density across {granularity} buckets.
               </p>
             </div>
@@ -358,22 +354,23 @@ export default function HistoricalAnalysisPage() {
           <div className="h-80 w-full pt-2">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={trends} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                <XAxis dataKey="date_bucket" stroke="#64748b" tick={{ fontSize: 10, fill: "#94a3b8" }} />
-                <YAxis stroke="#64748b" tick={{ fontSize: 10, fill: "#94a3b8" }} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                <XAxis dataKey="date_bucket" stroke="#64748b" tick={{ fontSize: 10, fill: "#64748b" }} />
+                <YAxis stroke="#64748b" tick={{ fontSize: 10, fill: "#64748b" }} />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: "#0f172a",
-                    borderColor: "#334155",
-                    borderRadius: "8px",
-                    color: "#f8fafc",
+                    backgroundColor: "#ffffff",
+                    borderColor: "#cbd5e1",
+                    borderRadius: "6px",
+                    color: "#0f172a",
                     fontSize: "12px",
+                    boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
                   }}
                 />
-                <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "10px" }} />
-                <Bar dataKey="event_count" name="Unified Events" fill="#f97316" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="matched_count" name="Dual-Sensor Matches" fill="#10b981" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="observation_count" name="Raw Hotspots" fill="#64748b" radius={[4, 4, 0, 0]} />
+                <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "10px", fontFamily: "monospace" }} />
+                <Bar dataKey="event_count" name="Unified Events" fill="#ea580c" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="matched_count" name="Dual-Sensor Matches" fill="#16a34a" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="observation_count" name="Raw Hotspots" fill="#94a3b8" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -382,18 +379,18 @@ export default function HistoricalAnalysisPage() {
 
       {/* TAB 2: Radiative Power Analysis (Separated) */}
       {activeTab === "frp" && (
-        <div className="rounded-xl glass-panel p-6 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-white/5">
+        <div className="sci-card p-5 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-200">
             <div>
-              <h3 className="text-base font-semibold text-white flex items-center gap-2">
-                <Zap className="w-4 h-4 text-orange-400" />
+              <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                <Zap className="w-4 h-4 text-slate-700" />
                 Sensor-Separated Fire Radiative Power (MW)
               </h3>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-xs text-slate-500 mt-0.5">
                 Strict physical separation: MODIS 4.0&mu;m radiant power and VIIRS 3.74&mu;m radiant power rendered on independent curves (never summed).
               </p>
             </div>
-            <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-amber-500/10 text-amber-300 border border-amber-500/20">
+            <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-amber-50 text-amber-800 border border-amber-200">
               Cross-Sensor Non-Summation Enforced
             </span>
           </div>
@@ -401,24 +398,25 @@ export default function HistoricalAnalysisPage() {
           <div className="h-80 w-full pt-2">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trends} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                <XAxis dataKey="date_bucket" stroke="#64748b" tick={{ fontSize: 10, fill: "#94a3b8" }} />
-                <YAxis stroke="#64748b" tick={{ fontSize: 10, fill: "#94a3b8" }} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                <XAxis dataKey="date_bucket" stroke="#64748b" tick={{ fontSize: 10, fill: "#64748b" }} />
+                <YAxis stroke="#64748b" tick={{ fontSize: 10, fill: "#64748b" }} />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: "#0f172a",
-                    borderColor: "#334155",
-                    borderRadius: "8px",
-                    color: "#f8fafc",
+                    backgroundColor: "#ffffff",
+                    borderColor: "#cbd5e1",
+                    borderRadius: "6px",
+                    color: "#0f172a",
                     fontSize: "12px",
+                    boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
                   }}
                 />
-                <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "10px" }} />
+                <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "10px", fontFamily: "monospace" }} />
                 <Line
                   type="monotone"
                   dataKey="modis_frp_mw"
                   name="MODIS FRP (1km MW)"
-                  stroke="#c084fc"
+                  stroke="#7c3aed"
                   strokeWidth={2}
                   dot={{ r: 2 }}
                 />
@@ -426,7 +424,7 @@ export default function HistoricalAnalysisPage() {
                   type="monotone"
                   dataKey="viirs_frp_mw"
                   name="VIIRS FRP (375m MW)"
-                  stroke="#22d3ee"
+                  stroke="#0284c7"
                   strokeWidth={2}
                   dot={{ r: 2 }}
                 />
@@ -438,26 +436,26 @@ export default function HistoricalAnalysisPage() {
 
       {/* TAB 3: Regional Fire Regimes */}
       {activeTab === "regions" && (
-        <div className="rounded-xl glass-panel p-6 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-white/5">
+        <div className="sci-card p-5 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-200">
             <div>
-              <h3 className="text-base font-semibold text-white flex items-center gap-2">
-                <Globe2 className="w-4 h-4 text-orange-400" />
+              <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                <Globe2 className="w-4 h-4 text-slate-700" />
                 Regional Hotspot Density & Biome Energy Distribution
               </h3>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-xs text-slate-500 mt-0.5">
                 Aggregated event frequencies and sensor radiative power across global wildfire biomes.
               </p>
             </div>
-            <span className="text-[11px] font-mono text-slate-400">
+            <span className="text-[11px] font-mono text-slate-500">
               {regions.length} active regions identified
             </span>
           </div>
 
-          <div className="overflow-x-auto rounded-lg border border-white/5">
+          <div className="overflow-x-auto rounded-md border border-slate-200">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="border-b border-white/8 bg-slate-900/80 text-slate-400 uppercase text-[10px] tracking-wider font-semibold font-mono">
+                <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 uppercase text-[10px] tracking-wider font-semibold font-mono">
                   <th className="py-2.5 px-3">Biome / Region Name</th>
                   <th className="py-2.5 px-3">Unified Events</th>
                   <th className="py-2.5 px-3">Dual-Matched</th>
@@ -466,30 +464,30 @@ export default function HistoricalAnalysisPage() {
                   <th className="py-2.5 px-3">VIIRS FRP (MW)</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5 text-slate-300">
+              <tbody className="divide-y divide-slate-100 text-slate-700 font-mono">
                 {regions.map((reg) => (
-                  <tr key={reg.region_name} className="hover:bg-slate-800/40 transition-colors">
-                    <td className="py-3 px-3 font-medium text-slate-200">
+                  <tr key={reg.region_name} className="hover:bg-slate-50 transition-colors">
+                    <td className="py-2.5 px-3 font-medium text-slate-900 font-sans">
                       {reg.region_name}
                     </td>
-                    <td className="py-3 px-3 font-mono text-orange-400 font-bold">
+                    <td className="py-2.5 px-3 text-orange-700 font-bold">
                       {reg.event_count.toLocaleString()}
                     </td>
-                    <td className="py-3 px-3 font-mono text-emerald-300">
+                    <td className="py-2.5 px-3 text-emerald-700">
                       {reg.matched_count.toLocaleString()}
                     </td>
-                    <td className="py-3 px-3 font-mono text-slate-300">
+                    <td className="py-2.5 px-3 text-slate-700">
                       <div className="flex items-center gap-2">
-                        <div className="w-16 bg-slate-800 rounded-full h-1.5 overflow-hidden">
-                          <div className="h-full bg-orange-500 rounded-full" style={{ width: `${Math.min(100, reg.percentage_of_total)}%` }} />
+                        <div className="w-16 bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                          <div className="h-full bg-slate-800 rounded-full" style={{ width: `${Math.min(100, reg.percentage_of_total)}%` }} />
                         </div>
                         <span>{reg.percentage_of_total}%</span>
                       </div>
                     </td>
-                    <td className="py-3 px-3 font-mono text-purple-300">
+                    <td className="py-2.5 px-3 text-purple-800">
                       {reg.modis_frp_mw.toLocaleString()} MW
                     </td>
-                    <td className="py-3 px-3 font-mono text-cyan-300">
+                    <td className="py-2.5 px-3 text-sky-800">
                       {reg.viirs_frp_mw.toLocaleString()} MW
                     </td>
                   </tr>
@@ -502,26 +500,26 @@ export default function HistoricalAnalysisPage() {
 
       {/* TAB 4: Spacecraft Constellation */}
       {activeTab === "sensors" && (
-        <div className="rounded-xl glass-panel p-6 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-white/5">
+        <div className="sci-card p-5 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-200">
             <div>
-              <h3 className="text-base font-semibold text-white flex items-center gap-2">
-                <Scale className="w-4 h-4 text-orange-400" />
+              <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                <Scale className="w-4 h-4 text-slate-700" />
                 Spacecraft Constellation & Radiometric Performance
               </h3>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-xs text-slate-500 mt-0.5">
                 Detection volumes, diurnal sampling (Day vs Night), and radiometric statistics by satellite platform.
               </p>
             </div>
-            <span className="text-[11px] font-mono text-slate-400">
+            <span className="text-[11px] font-mono text-slate-500">
               {sensors.length} operational spacecraft
             </span>
           </div>
 
-          <div className="overflow-x-auto rounded-lg border border-white/5">
+          <div className="overflow-x-auto rounded-md border border-slate-200">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="border-b border-white/8 bg-slate-900/80 text-slate-400 uppercase text-[10px] tracking-wider font-semibold font-mono">
+                <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 uppercase text-[10px] tracking-wider font-semibold font-mono">
                   <th className="py-2.5 px-3">Spacecraft</th>
                   <th className="py-2.5 px-3">Instrument</th>
                   <th className="py-2.5 px-3">Hotspots</th>
@@ -532,37 +530,37 @@ export default function HistoricalAnalysisPage() {
                   <th className="py-2.5 px-3">Max FRP</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5 text-slate-300">
+              <tbody className="divide-y divide-slate-100 text-slate-700 font-mono">
                 {sensors.map((s) => (
-                  <tr key={s.satellite} className="hover:bg-slate-800/40 transition-colors">
-                    <td className="py-3 px-3 font-semibold text-white">
+                  <tr key={s.satellite} className="hover:bg-slate-50 transition-colors">
+                    <td className="py-2.5 px-3 font-semibold text-slate-900 font-sans">
                       {s.satellite}
                     </td>
-                    <td className="py-3 px-3">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+                    <td className="py-2.5 px-3">
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
                         s.instrument === "MODIS"
-                          ? "bg-purple-500/15 text-purple-300 border border-purple-500/30"
-                          : "bg-cyan-500/15 text-cyan-300 border border-cyan-500/30"
+                          ? "bg-purple-50 text-purple-800 border border-purple-200"
+                          : "bg-sky-50 text-sky-800 border border-sky-200"
                       }`}>
                         {s.instrument}
                       </span>
                     </td>
-                    <td className="py-3 px-3 font-mono text-slate-200 font-bold">
+                    <td className="py-2.5 px-3 text-slate-900 font-bold">
                       {s.observation_count.toLocaleString()}
                     </td>
-                    <td className="py-3 px-3 font-mono text-slate-300">
+                    <td className="py-2.5 px-3 text-slate-700">
                       {s.share_percentage}%
                     </td>
-                    <td className="py-3 px-3 font-mono text-slate-400">
-                      <span className="text-amber-400">{s.daytime_count} D</span> &bull; <span className="text-cyan-400">{s.nighttime_count} N</span>
+                    <td className="py-2.5 px-3 text-slate-600">
+                      <span>{s.daytime_count} D</span> &bull; <span>{s.nighttime_count} N</span>
                     </td>
-                    <td className="py-3 px-3 font-mono text-orange-400 font-bold">
+                    <td className="py-2.5 px-3 text-orange-700 font-bold">
                       {s.total_frp_mw.toLocaleString()} MW
                     </td>
-                    <td className="py-3 px-3 font-mono text-slate-300">
+                    <td className="py-2.5 px-3 text-slate-700">
                       {s.mean_frp_mw !== null ? `${s.mean_frp_mw} MW` : "—"}
                     </td>
-                    <td className="py-3 px-3 font-mono text-red-400 font-bold">
+                    <td className="py-2.5 px-3 text-red-700 font-bold">
                       {s.max_frp_mw !== null ? `${s.max_frp_mw} MW` : "—"}
                     </td>
                   </tr>
@@ -575,20 +573,20 @@ export default function HistoricalAnalysisPage() {
 
       {/* TAB 5: Paginated Harmonized Events Table */}
       {activeTab === "events" && (
-        <div className="rounded-xl glass-panel p-6 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/5">
+        <div className="sci-card p-5 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
             <div>
-              <h3 className="text-base font-semibold text-white flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-orange-400" />
+              <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-slate-700" />
                 Persisted Unified Harmonized Fire Events
               </h3>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-xs text-slate-500 mt-0.5">
                 Harmonized via AgniNet-Harmonize-v1.1.1. Showing page {currentPage} of {totalPages} ({totalEvents} total events).
               </p>
             </div>
 
             {/* Classification Filters */}
-            <div className="flex flex-wrap items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1">
               {(["ALL", "MATCHED", "MODIS_ONLY", "VIIRS_ONLY", "AMBIGUOUS"] as const).map((cls) => (
                 <button
                   key={cls}
@@ -596,10 +594,10 @@ export default function HistoricalAnalysisPage() {
                     setClassificationFilter(cls);
                     setCurrentPage(1);
                   }}
-                  className={`px-2 py-1 rounded text-[10px] font-mono font-semibold transition-all cursor-pointer ${
+                  className={`px-2 py-1 rounded text-[10px] font-mono font-medium transition-colors cursor-pointer ${
                     classificationFilter === cls
-                      ? "bg-orange-500 text-white border border-orange-400"
-                      : "bg-slate-900 text-slate-300 hover:bg-slate-800 border border-white/5"
+                      ? "bg-slate-900 text-white shadow-sm"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                   }`}
                 >
                   {cls === "ALL" ? "All" : cls.replace("_", " ")}
@@ -608,10 +606,10 @@ export default function HistoricalAnalysisPage() {
             </div>
           </div>
 
-          <div className="overflow-x-auto rounded-lg border border-white/5">
+          <div className="overflow-x-auto rounded-md border border-slate-200">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="border-b border-white/8 bg-slate-900/80 text-slate-400 uppercase text-[10px] tracking-wider font-semibold font-mono">
+                <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 uppercase text-[10px] tracking-wider font-semibold font-mono">
                   <th className="py-2.5 px-3">Event ID & Classification</th>
                   <th className="py-2.5 px-3">Date & Time (UTC)</th>
                   <th className="py-2.5 px-3">Centroid (WGS84)</th>
@@ -621,54 +619,54 @@ export default function HistoricalAnalysisPage() {
                   <th className="py-2.5 px-3">Match Score</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5 text-slate-300">
+              <tbody className="divide-y divide-slate-100 text-slate-700 font-mono">
                 {events.map((evt) => {
                   const badgeClass =
                     evt.classification === "MATCHED"
-                      ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                      ? "bg-emerald-50 text-emerald-800 border-emerald-200"
                       : evt.classification === "MODIS_ONLY"
-                      ? "bg-purple-500/15 text-purple-300 border-purple-500/30"
+                      ? "bg-purple-50 text-purple-800 border-purple-200"
                       : evt.classification === "VIIRS_ONLY"
-                      ? "bg-cyan-500/15 text-cyan-300 border-cyan-500/30"
-                      : "bg-amber-500/15 text-amber-300 border-amber-500/30";
+                      ? "bg-sky-50 text-sky-800 border-sky-200"
+                      : "bg-amber-50 text-amber-800 border-amber-200";
 
                   return (
-                    <tr key={evt.id} className="hover:bg-slate-800/40 transition-colors">
-                      <td className="py-3 px-3">
-                        <div className="font-mono text-xs font-semibold text-slate-200">
+                    <tr key={evt.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="py-2.5 px-3">
+                        <div className="font-semibold text-slate-900">
                           {evt.id}
                         </div>
-                        <span className={`inline-block px-1.5 py-0.2 mt-1 rounded text-[9px] font-mono font-bold border ${badgeClass}`}>
+                        <span className={`inline-block px-1.5 py-0.2 mt-0.5 rounded text-[9px] font-semibold border ${badgeClass}`}>
                           {evt.classification.replace("_", " ")}
                         </span>
                       </td>
-                      <td className="py-3 px-3 font-mono text-[11px] text-slate-300">
+                      <td className="py-2.5 px-3 text-slate-600">
                         {evt.acquisition_date}
-                        <div className="text-[10px] text-slate-500">
+                        <div className="text-[10px] text-slate-400">
                           {evt.earliest_acq_utc ?? "—"} to {evt.latest_acq_utc ?? "—"} UTC
                         </div>
                       </td>
-                      <td className="py-3 px-3 font-mono text-[11px] text-slate-300">
+                      <td className="py-2.5 px-3 text-slate-700">
                         {evt.latitude >= 0 ? `${evt.latitude.toFixed(2)}°N` : `${Math.abs(evt.latitude).toFixed(2)}°S`},{" "}
                         {evt.longitude >= 0 ? `${evt.longitude.toFixed(2)}°E` : `${Math.abs(evt.longitude).toFixed(2)}°W`}
                       </td>
-                      <td className="py-3 px-3 text-[11px]">
+                      <td className="py-2.5 px-3 font-sans text-slate-600">
                         {[...evt.modis_satellites, ...evt.viirs_satellites].join(", ") || "Unassigned"}
-                        <div className="text-[10px] text-slate-500 font-mono">
+                        <div className="text-[10px] text-slate-400 font-mono">
                           {evt.modis_observation_ids.length} MODIS &bull; {evt.viirs_observation_ids.length} VIIRS
                         </div>
                       </td>
-                      <td className="py-3 px-3 font-mono text-purple-300">
+                      <td className="py-2.5 px-3 text-purple-800 font-bold">
                         {evt.modis_frp_mw !== null && evt.modis_frp_mw !== undefined ? `${evt.modis_frp_mw} MW` : "—"}
                       </td>
-                      <td className="py-3 px-3 font-mono text-cyan-300">
+                      <td className="py-2.5 px-3 text-sky-800 font-bold">
                         {evt.viirs_total_frp_mw !== null && evt.viirs_total_frp_mw !== undefined
                           ? `${evt.viirs_total_frp_mw} MW`
                           : evt.viirs_individual_frps.length > 0
                           ? `[${evt.viirs_individual_frps.map((f) => `${f.toFixed(1)}`).join(", ")}] MW`
                           : "—"}
                       </td>
-                      <td className="py-3 px-3 font-mono text-[11px] font-bold text-slate-200">
+                      <td className="py-2.5 px-3 font-bold text-slate-900">
                         {Math.round(evt.match_score * 100)}%
                       </td>
                     </tr>
@@ -679,15 +677,15 @@ export default function HistoricalAnalysisPage() {
           </div>
 
           {/* Pagination Controls */}
-          <div className="flex items-center justify-between pt-2 border-t border-white/5 text-xs text-slate-400">
+          <div className="flex items-center justify-between pt-2 border-t border-slate-200 text-xs text-slate-600 font-mono">
             <span>
               Page {currentPage} of {totalPages}
             </span>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 disabled={currentPage <= 1}
-                className="px-2.5 py-1 rounded bg-slate-900 border border-white/10 text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1"
+                className="px-2.5 py-1 rounded bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1"
               >
                 <ChevronLeft className="w-3.5 h-3.5" />
                 Previous
@@ -695,7 +693,7 @@ export default function HistoricalAnalysisPage() {
               <button
                 onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                 disabled={currentPage >= totalPages}
-                className="px-2.5 py-1 rounded bg-slate-900 border border-white/10 text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1"
+                className="px-2.5 py-1 rounded bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1"
               >
                 Next
                 <ChevronRight className="w-3.5 h-3.5" />

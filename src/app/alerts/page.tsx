@@ -7,7 +7,6 @@ import { FireAlert } from "@/types/fire";
 import { formatFRP, formatCoordinates } from "@/lib/utils";
 import {
   ExternalLink,
-  CheckCircle2,
   Send,
 } from "lucide-react";
 import Link from "next/link";
@@ -31,73 +30,72 @@ export default function AlertsPage() {
   const getSeverityBadge = (severity: FireAlert["severity"]) => {
     switch (severity) {
       case "critical":
-        return "bg-red-500/15 text-red-400 border-red-500/30";
+        return "bg-red-50 text-red-800 border-red-200";
       case "high":
-        return "bg-orange-500/15 text-orange-400 border-orange-500/30";
+        return "bg-orange-50 text-orange-800 border-orange-200";
       case "medium":
-        return "bg-amber-500/15 text-amber-400 border-amber-500/30";
+        return "bg-amber-50 text-amber-800 border-amber-200";
       case "advisory":
-        return "bg-yellow-500/15 text-yellow-300 border-yellow-500/30";
+        return "bg-yellow-50 text-yellow-800 border-yellow-200";
       default:
-        return "bg-slate-700/50 text-slate-300 border-slate-600";
+        return "bg-slate-100 text-slate-700 border-slate-200";
     }
   };
 
   return (
     <div className="space-y-6">
+      {/* Page Header */}
       <PageHeader
-        badge="Early Warning System"
-        title="Active Megafire Escalation & Critical Alerts"
-        description="Automated satellite fire detection alerts prioritized by Fire Radiative Power (FRP), rate of spread, and high-value ecological boundary proximity."
+        badge="Early Warning / Incident Response Feeds"
+        title="Thermal Anomaly Escalation & Critical Alerts"
+        description="Automated satellite fire detection notices prioritized by Fire Radiative Power (FRP), rate of thermal expansion, and critical ecological boundary proximity."
         action={
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-mono bg-red-500/10 text-red-400 border border-red-500/20 font-semibold">
-              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-              {DEMO_ALERTS.length} CRITICAL ACTIVE NOTICES
-            </span>
-          </div>
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-mono bg-red-50 text-red-800 border border-red-200 font-semibold">
+            <span className="w-2 h-2 rounded-full bg-red-600" />
+            {DEMO_ALERTS.length} CRITICAL ACTIVE NOTICES
+          </span>
         }
       />
 
       {/* Filter Tabs */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-1 p-1 bg-slate-900/80 rounded-lg border border-white/8 text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-md border border-slate-200">
           <button
             onClick={() => setSeverityFilter("ALL")}
-            className={`px-3 py-1.5 rounded-md font-medium transition-all ${
+            className={`px-3 py-1 rounded text-xs font-medium transition-colors cursor-pointer ${
               severityFilter === "ALL"
-                ? "bg-slate-700 text-white font-semibold"
-                : "text-slate-400 hover:text-slate-200"
+                ? "bg-white text-slate-900 shadow-sm font-semibold"
+                : "text-slate-600 hover:text-slate-900"
             }`}
           >
             All Severities ({DEMO_ALERTS.length})
           </button>
           <button
             onClick={() => setSeverityFilter("critical")}
-            className={`px-3 py-1.5 rounded-md font-medium transition-all ${
+            className={`px-3 py-1 rounded text-xs font-medium transition-colors cursor-pointer ${
               severityFilter === "critical"
-                ? "bg-red-500/20 text-red-300 border border-red-500/30 font-semibold"
-                : "text-slate-400 hover:text-slate-200"
+                ? "bg-white text-red-700 shadow-sm font-semibold"
+                : "text-slate-600 hover:text-slate-900"
             }`}
           >
             Critical
           </button>
           <button
             onClick={() => setSeverityFilter("high")}
-            className={`px-3 py-1.5 rounded-md font-medium transition-all ${
+            className={`px-3 py-1 rounded text-xs font-medium transition-colors cursor-pointer ${
               severityFilter === "high"
-                ? "bg-orange-500/20 text-orange-300 border border-orange-500/30 font-semibold"
-                : "text-slate-400 hover:text-slate-200"
+                ? "bg-white text-orange-700 shadow-sm font-semibold"
+                : "text-slate-600 hover:text-slate-900"
             }`}
           >
             High
           </button>
           <button
             onClick={() => setSeverityFilter("medium")}
-            className={`px-3 py-1.5 rounded-md font-medium transition-all ${
+            className={`px-3 py-1 rounded text-xs font-medium transition-colors cursor-pointer ${
               severityFilter === "medium"
-                ? "bg-amber-500/20 text-amber-300 border border-amber-500/30 font-semibold"
-                : "text-slate-400 hover:text-slate-200"
+                ? "bg-white text-amber-700 shadow-sm font-semibold"
+                : "text-slate-600 hover:text-slate-900"
             }`}
           >
             Medium / Advisory
@@ -110,13 +108,13 @@ export default function AlertsPage() {
       </div>
 
       {/* Alerts Feed List */}
-      <div className="space-y-4">
+      <div className="space-y-3">
         {filteredAlerts.map((alert) => (
           <div
             key={alert.id}
-            className="rounded-xl glass-panel p-5 space-y-3 relative overflow-hidden border border-white/8 hover:border-orange-500/40 transition-all"
+            className="sci-card p-4 sm:p-5 space-y-3 hover:border-slate-300 transition-colors"
           >
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-white/5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-200">
               <div className="flex items-center gap-2">
                 <span
                   className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase font-bold border ${getSeverityBadge(
@@ -125,7 +123,7 @@ export default function AlertsPage() {
                 >
                   {alert.severity}
                 </span>
-                <span className="font-mono text-xs font-semibold text-slate-300">
+                <span className="font-mono text-xs font-semibold text-slate-900">
                   {alert.id}
                 </span>
                 <span className="text-[11px] text-slate-500 font-mono">
@@ -133,11 +131,11 @@ export default function AlertsPage() {
                 </span>
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-mono font-bold text-orange-400">
+              <div className="flex items-center gap-2 font-mono">
+                <span className="text-xs font-bold text-orange-700">
                   {formatFRP(alert.frpMw)} Peak FRP
                 </span>
-                <span className="text-[11px] text-slate-400 font-mono">
+                <span className="text-[11px] text-slate-500">
                   ({alert.affectedAreaKm2} km² perimeter)
                 </span>
               </div>
@@ -145,15 +143,15 @@ export default function AlertsPage() {
 
             <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
               <div className="space-y-1.5 max-w-3xl">
-                <h4 className="text-base font-bold text-white tracking-tight">
+                <h4 className="text-sm font-bold text-slate-900 tracking-tight">
                   {alert.title}
                 </h4>
-                <p className="text-xs text-slate-300 leading-relaxed">
+                <p className="text-xs text-slate-600 leading-relaxed">
                   {alert.summary}
                 </p>
-                <div className="flex flex-wrap items-center gap-3 pt-1 text-[11px] text-slate-400">
+                <div className="flex flex-wrap items-center gap-3 pt-1 text-[11px] text-slate-500">
                   <span>
-                    Location: <strong className="text-slate-200">{alert.region}</strong>
+                    Sector: <strong className="text-slate-800">{alert.region}</strong>
                   </span>
                   <span>&bull;</span>
                   <span className="font-mono">
@@ -161,18 +159,18 @@ export default function AlertsPage() {
                   </span>
                   <span>&bull;</span>
                   <span>
-                    Source: <strong className="text-cyan-300">{alert.sensorSource}</strong>
+                    Sensor: <strong className="text-sky-800">{alert.sensorSource}</strong>
                   </span>
                 </div>
               </div>
 
               <div className="shrink-0 flex items-center gap-2">
                 <Link
-                  href={`/map?lat=${alert.coordinates[0]}&lon=${alert.coordinates[1]}&zoom=8`}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-orange-300 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 transition-all cursor-pointer"
+                  href={`/map`}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 transition-colors"
                 >
-                  <span>View Hotspot</span>
-                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Locate Hotspot</span>
+                  <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
                 </Link>
               </div>
             </div>
@@ -181,38 +179,31 @@ export default function AlertsPage() {
       </div>
 
       {/* Webhook Dispatch & Integration Demo Box */}
-      <div className="rounded-xl glass-panel p-6 space-y-4">
+      <div className="sci-card p-5 space-y-3">
         <div className="flex items-center gap-2">
-          <Send className="w-4 h-4 text-cyan-400" />
-          <h3 className="text-base font-semibold text-white">
-            Emergency Dispatch Webhook & API Ingestion Settings (Demo)
+          <Send className="w-4 h-4 text-slate-700" />
+          <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wider">
+            Emergency Dispatch Webhook & Integration Settings
           </h3>
         </div>
-        <p className="text-xs text-slate-400 leading-relaxed max-w-3xl">
+        <p className="text-xs text-slate-600 leading-relaxed max-w-3xl">
           Configure real-time Common Alerting Protocol (CAP) or GeoJSON webhook push endpoints to notify incident response centers, forestry teams, and disaster command units immediately when thermal anomalies exceed defined FRP thresholds.
         </p>
 
-        <form onSubmit={handleSaveWebhook} className="flex flex-col sm:flex-row gap-3 max-w-2xl">
+        <form onSubmit={handleSaveWebhook} className="flex flex-col sm:flex-row gap-2 max-w-2xl pt-1">
           <input
             type="url"
             value={webhookUrl}
             onChange={(e) => setWebhookUrl(e.target.value)}
             placeholder="https://your-domain.gov/api/v1/wildfire-push"
-            className="flex-1 px-3.5 py-2 rounded-lg text-xs bg-slate-900 border border-white/10 text-slate-200 focus:outline-none focus:border-cyan-500/50"
+            className="flex-1 bg-slate-50 border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 font-mono focus:outline-none focus:border-slate-500"
             required
           />
           <button
             type="submit"
-            className="px-4 py-2 rounded-lg text-xs font-semibold text-white bg-cyan-600 hover:bg-cyan-500 transition-colors shrink-0 flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-cyan-600/20"
+            className="px-4 py-1.5 rounded bg-slate-900 text-white text-xs font-medium hover:bg-slate-800 transition-colors shrink-0 shadow-sm cursor-pointer"
           >
-            {webhookSaved ? (
-              <>
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Endpoint Saved!</span>
-              </>
-            ) : (
-              <span>Save Dispatch Hook</span>
-            )}
+            {webhookSaved ? "Saved" : "Save Webhook"}
           </button>
         </form>
       </div>

@@ -13,9 +13,8 @@ import {
   Info,
   ChevronLeft,
   ChevronRight,
-  Radio,
   Satellite,
-  Activity,
+  Radio,
 } from "lucide-react";
 import { MAIN_NAVIGATION, NavigationItem } from "@/types/navigation";
 
@@ -37,21 +36,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const getIcon = (name: string) => {
     switch (name) {
       case "LayoutDashboard":
-        return <LayoutDashboard className="w-5 h-5 shrink-0" />;
+        return <LayoutDashboard className="w-4 h-4 shrink-0" />;
       case "Globe":
-        return <Globe className="w-5 h-5 shrink-0" />;
+        return <Globe className="w-4 h-4 shrink-0" />;
       case "Calendar":
-        return <Calendar className="w-5 h-5 shrink-0" />;
+        return <Calendar className="w-4 h-4 shrink-0" />;
       case "BarChart3":
-        return <BarChart3 className="w-5 h-5 shrink-0" />;
+        return <BarChart3 className="w-4 h-4 shrink-0" />;
       case "Layers":
-        return <Layers className="w-5 h-5 shrink-0" />;
+        return <Layers className="w-4 h-4 shrink-0" />;
       case "Flame":
-        return <Flame className="w-5 h-5 shrink-0" />;
+        return <Flame className="w-4 h-4 shrink-0" />;
       case "Info":
-        return <Info className="w-5 h-5 shrink-0" />;
+        return <Info className="w-4 h-4 shrink-0" />;
       default:
-        return <Activity className="w-5 h-5 shrink-0" />;
+        return <Radio className="w-4 h-4 shrink-0" />;
     }
   };
 
@@ -61,52 +60,51 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {mobileOpen && (
         <div
           onClick={onCloseMobile}
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
+          className="fixed inset-0 bg-slate-900/40 z-40 lg:hidden"
           aria-hidden="true"
         />
       )}
 
       {/* Sidebar container */}
       <aside
-        className={`fixed top-0 bottom-0 left-0 z-50 flex flex-col bg-[#0a0f1d] border-r border-white/8 transition-all duration-300 ease-in-out ${
-          collapsed ? "w-20" : "w-64"
+        className={`fixed top-0 bottom-0 left-0 z-50 flex flex-col bg-white border-r border-slate-200 transition-all duration-200 ease-in-out ${
+          collapsed ? "w-16" : "w-60"
         } ${
           mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         }`}
       >
         {/* Brand Header */}
-        <div className="h-16 flex items-center justify-between px-4 border-b border-white/8 bg-[#090e1b]">
+        <div className="h-14 flex items-center justify-between px-3.5 border-b border-slate-200 bg-slate-50">
           <Link
             href="/"
             onClick={onCloseMobile}
-            className="flex items-center gap-3 overflow-hidden group"
+            className="flex items-center gap-2.5 overflow-hidden group"
           >
-            <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-amber-600 shadow-lg shadow-orange-500/25 shrink-0 group-hover:scale-105 transition-transform">
-              <Flame className="w-5 h-5 text-white" />
-              <div className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-cyan-400 ring-2 ring-[#0a0f1d] animate-ping opacity-75" />
+            <div className="w-8 h-8 rounded-md bg-slate-900 text-white flex items-center justify-center shrink-0">
+              <Flame className="w-4 h-4 text-orange-400" />
             </div>
 
             {!collapsed && (
-              <div className="flex flex-col min-w-0 transition-opacity duration-200">
+              <div className="flex flex-col min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <span className="font-bold text-base tracking-tight text-white group-hover:text-orange-400 transition-colors">
+                  <span className="font-bold text-sm tracking-tight text-slate-900">
                     AgniNet
                   </span>
-                  <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-semibold bg-orange-500/20 text-orange-400 border border-orange-500/30">
+                  <span className="px-1 py-0.2 rounded text-[9px] font-mono font-semibold bg-slate-200 text-slate-700">
                     2026
                   </span>
                 </div>
-                <span className="text-[10px] text-slate-400 truncate tracking-wide">
+                <span className="text-[10px] text-slate-500 truncate tracking-wide">
                   Satellite Fire Intelligence
                 </span>
               </div>
             )}
           </Link>
 
-          {/* Desktop Collapse Toggle */}
+          {/* Collapse Button (Desktop) */}
           <button
             onClick={onToggleCollapse}
-            className="hidden lg:flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/60 transition-colors"
+            className="hidden lg:flex items-center justify-center w-6 h-6 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition-colors"
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             {collapsed ? (
@@ -117,30 +115,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </div>
 
-        {/* Constellation Health Bar */}
-        {!collapsed && (
-          <div className="px-4 py-3 mx-3 my-3 rounded-lg bg-slate-900/60 border border-white/5 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-              <span className="text-[11px] font-medium text-slate-300">
-                Constellation Status
-              </span>
+        {/* Navigation Links */}
+        <div className="flex-1 py-3 px-2 space-y-1 overflow-y-auto">
+          {!collapsed && (
+            <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              Platform Views
             </div>
-            <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
-              5/5 ACTIVE
-            </span>
-          </div>
-        )}
+          )}
 
-        {/* Navigation list */}
-        <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
           {MAIN_NAVIGATION.map((item: NavigationItem) => {
             const isActive =
-              pathname === item.href ||
-              (item.href !== "/" && pathname.startsWith(item.href));
+              item.href === "/"
+                ? pathname === "/"
+                : pathname.startsWith(item.href);
 
             return (
               <Link
@@ -148,62 +135,76 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 href={item.href}
                 onClick={onCloseMobile}
                 title={collapsed ? item.name : undefined}
-                className={`relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all group ${
+                className={`flex items-center gap-2.5 px-2.5 py-2 rounded-md text-xs transition-colors ${
                   isActive
-                    ? "bg-gradient-to-r from-orange-500/20 to-amber-500/10 text-orange-300 border border-orange-500/30 shadow-sm shadow-orange-500/10"
-                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40 border border-transparent"
-                } ${collapsed ? "justify-center px-0" : ""}`}
+                    ? "bg-slate-900 text-white font-medium shadow-sm"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                }`}
               >
-                {isActive && (
-                  <span className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r-full bg-orange-500" />
-                )}
-
-                <div
-                  className={`${
-                    isActive
-                      ? "text-orange-400"
-                      : "text-slate-400 group-hover:text-slate-200"
-                  }`}
-                >
+                <span className={isActive ? "text-orange-400" : "text-slate-500"}>
                   {getIcon(item.iconName)}
-                </div>
+                </span>
 
                 {!collapsed && (
-                  <div className="flex items-center justify-between flex-1 min-w-0">
-                    <span className="truncate">{item.name}</span>
-                    {item.badge && (
-                      <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-mono uppercase bg-orange-500/15 text-orange-300 border border-orange-500/30">
-                        {item.badge}
-                      </span>
-                    )}
-                  </div>
+                  <span className="truncate">{item.name}</span>
                 )}
               </Link>
             );
           })}
+
+          {/* Spacecraft Constellation Monitor (Desktop Expanded Only) */}
+          {!collapsed && (
+            <div className="pt-4 mt-4 border-t border-slate-200 px-2 space-y-2">
+              <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                <span className="flex items-center gap-1">
+                  <Satellite className="w-3 h-3 text-slate-500" />
+                  Constellation
+                </span>
+                <span className="text-emerald-700 font-mono text-[9px]">5 ACTIVE</span>
+              </div>
+
+              <div className="space-y-1 text-[11px] font-mono">
+                <div className="flex items-center justify-between py-0.5 text-slate-600">
+                  <span className="truncate">Terra (MODIS 1km)</span>
+                  <span className="text-[10px] text-slate-400">AM</span>
+                </div>
+                <div className="flex items-center justify-between py-0.5 text-slate-600">
+                  <span className="truncate">Aqua (MODIS 1km)</span>
+                  <span className="text-[10px] text-slate-400">PM</span>
+                </div>
+                <div className="flex items-center justify-between py-0.5 text-slate-600">
+                  <span className="truncate">Suomi-NPP (VIIRS 375m)</span>
+                  <span className="text-[10px] text-cyan-600">375m</span>
+                </div>
+                <div className="flex items-center justify-between py-0.5 text-slate-600">
+                  <span className="truncate">NOAA-20 (VIIRS 375m)</span>
+                  <span className="text-[10px] text-cyan-600">375m</span>
+                </div>
+                <div className="flex items-center justify-between py-0.5 text-slate-600">
+                  <span className="truncate">NOAA-21 (VIIRS 375m)</span>
+                  <span className="text-[10px] text-cyan-600">375m</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Mission Telemetry Summary Footer */}
-        <div className="p-3 border-t border-white/8 bg-[#090e1b]">
+        {/* Footer / System Meta */}
+        <div className="p-3 border-t border-slate-200 bg-slate-50">
           {!collapsed ? (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-[11px] text-slate-400">
-                <span className="flex items-center gap-1.5">
-                  <Satellite className="w-3.5 h-3.5 text-cyan-400" />
-                  MODIS &bull; VIIRS Harmonized
-                </span>
-                <span className="font-mono text-cyan-400">Phase 1</span>
+            <div className="space-y-1 text-[10px] font-mono text-slate-500">
+              <div className="flex items-center justify-between">
+                <span>ENGINE:</span>
+                <span className="text-slate-700 font-semibold">Harmonize-v1.1.1</span>
               </div>
-              <div className="w-full bg-slate-800 h-1 rounded-full overflow-hidden">
-                <div className="bg-gradient-to-r from-cyan-500 to-orange-500 h-full w-full" />
+              <div className="flex items-center justify-between">
+                <span>RELEASE:</span>
+                <span className="text-slate-700">v1.2.0</span>
               </div>
-              <p className="text-[10px] text-slate-500 text-center font-mono">
-                NASA Space Apps Challenge 2026
-              </p>
             </div>
           ) : (
-            <div className="flex justify-center" title="NASA Space Apps 2026">
-              <Radio className="w-4 h-4 text-cyan-400 animate-pulse" />
+            <div className="flex justify-center text-[9px] font-mono text-slate-400">
+              v1.2
             </div>
           )}
         </div>

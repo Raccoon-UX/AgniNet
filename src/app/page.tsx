@@ -7,15 +7,16 @@ import { ActivityTrendChart } from "@/components/dashboard/ActivityTrendChart";
 import { HotspotTable } from "@/components/dashboard/HotspotTable";
 import { RegionalBreakdown } from "@/components/dashboard/RegionalBreakdown";
 import { ConstellationStatus } from "@/components/dashboard/ConstellationStatus";
+import { ObservationInspector } from "@/components/dashboard/ObservationInspector";
 import { FireMap } from "@/components/map/FireMap";
 import { DEMO_KPIS, DEMO_HOTSPOTS } from "@/data/fixtures";
 import { HotspotKpis, HotspotObservation } from "@/types/fire";
 import { fetchObservations } from "@/lib/api";
-import { RefreshCw, Radio, Flame, AlertCircle, Filter, Calendar, Layers } from "lucide-react";
+import { RefreshCw, AlertCircle, Filter, Calendar, Layers, MapPin } from "lucide-react";
 import Link from "next/link";
 
 export default function OverviewPage() {
-  const [selectedHotspot, setSelectedHotspot] = useState<HotspotObservation | null>(null);
+  const [selectedHotspot, setSelectedHotspot] = useState<HotspotObservation | null>(DEMO_HOTSPOTS[0]);
   const [observations, setObservations] = useState<HotspotObservation[]>(DEMO_HOTSPOTS);
   const [kpis, setKpis] = useState<HotspotKpis>(DEMO_KPIS);
   const [isLive, setIsLive] = useState<boolean>(false);
@@ -53,6 +54,9 @@ export default function OverviewPage() {
       setIsLive(result.isLive);
       setLastFetchTime(result.fetchedAt);
       setNotice(result.notice ?? null);
+      if (result.observations.length > 0) {
+        setSelectedHotspot(result.observations[0]);
+      }
       if (result.error && !result.isLive) {
         setError(result.error);
       } else {
@@ -94,6 +98,9 @@ export default function OverviewPage() {
           setIsLive(result.isLive);
           setLastFetchTime(result.fetchedAt);
           setNotice(result.notice ?? null);
+          if (result.observations.length > 0) {
+            setSelectedHotspot(result.observations[0]);
+          }
           if (result.error && !result.isLive) {
             setError(result.error);
           } else {
@@ -119,52 +126,52 @@ export default function OverviewPage() {
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
+      {/* Platform Section Header */}
       <PageHeader
-        badge="Mission Control &bull; Phase 2 Live Stream"
-        title="Active Satellite Fire Intelligence"
-        description="Near real-time fusion of NASA MODIS (Terra/Aqua) and VIIRS (Suomi-NPP/NOAA-20/21) active fire observations with automated backend ingestion and radiative power quantification."
+        badge="Earth Observation / Radiometric Fire Intelligence"
+        title="Active Satellite Fire Telemetry"
+        description="Near real-time fusion of NASA MODIS (Terra/Aqua 1km) and VIIRS (Suomi-NPP/NOAA-20/21 375m) active fire radiometry, automated spatial harmonization, and radiative power quantification."
         action={
           <div className="flex items-center gap-2">
             <button
               onClick={() => loadData(true)}
               disabled={refreshing}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-700/80 border border-white/10 transition-all cursor-pointer disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 shadow-sm transition-colors cursor-pointer disabled:opacity-50"
             >
               <RefreshCw
-                className={`w-3.5 h-3.5 text-cyan-400 ${
+                className={`w-3.5 h-3.5 text-slate-600 ${
                   refreshing ? "animate-spin" : ""
                 }`}
               />
-              <span>{refreshing ? "Syncing..." : "Sync Buffer"}</span>
+              <span>{refreshing ? "Syncing..." : "Sync Feeds"}</span>
             </button>
 
             <Link
               href="/map"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 shadow-md shadow-orange-600/25 transition-all rounded-lg"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 transition-colors shadow-sm"
             >
-              <Flame className="w-3.5 h-3.5" />
-              <span>Full Interactive Map</span>
+              <MapPin className="w-3.5 h-3.5 text-orange-400" />
+              <span>Full Map Explorer</span>
             </Link>
           </div>
         }
       />
 
-      {/* Filter and Telemetry Control Bar */}
-      <div className="rounded-xl glass-panel p-4 flex flex-wrap items-center justify-between gap-4 border border-white/10">
+      {/* Filter and Telemetry Control Strip */}
+      <div className="sci-card p-3 sm:p-4 flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="flex flex-wrap items-center gap-3">
           {/* Sensor Feed Selector */}
-          <div className="flex items-center gap-1.5 text-xs text-slate-300">
-            <Layers className="w-3.5 h-3.5 text-orange-400" />
-            <span className="font-semibold text-slate-400">Sensor:</span>
+          <div className="flex items-center gap-1.5 text-slate-700">
+            <Layers className="w-3.5 h-3.5 text-slate-500" />
+            <span className="font-semibold text-slate-600 uppercase tracking-wider text-[11px]">Sensor:</span>
             <select
               value={selectedSource}
               onChange={(e) => setSelectedSource(e.target.value)}
-              className="bg-slate-900 border border-white/10 text-slate-200 rounded-md px-2.5 py-1 text-xs focus:outline-none focus:border-orange-500/50"
+              className="bg-slate-50 border border-slate-300 text-slate-800 rounded px-2.5 py-1 text-xs focus:outline-none focus:border-slate-500"
             >
               <option value="ALL">All Sensors (Merged)</option>
-              <option value="VIIRS">VIIRS (Suomi-NPP & NOAA-20/21)</option>
-              <option value="MODIS">MODIS (Terra & Aqua)</option>
+              <option value="VIIRS">VIIRS Constellation (375m)</option>
+              <option value="MODIS">MODIS Terra & Aqua (1000m)</option>
               <option value="VIIRS_NOAA20_NRT">VIIRS NOAA-20 (375m)</option>
               <option value="VIIRS_NOAA21_NRT">VIIRS NOAA-21 (375m)</option>
               <option value="VIIRS_SNPP_NRT">VIIRS Suomi-NPP (375m)</option>
@@ -173,32 +180,32 @@ export default function OverviewPage() {
           </div>
 
           {/* Time Window Selector */}
-          <div className="flex items-center gap-1.5 text-xs text-slate-300">
-            <Calendar className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="font-semibold text-slate-400">Window:</span>
+          <div className="flex items-center gap-1.5 text-slate-700">
+            <Calendar className="w-3.5 h-3.5 text-slate-500" />
+            <span className="font-semibold text-slate-600 uppercase tracking-wider text-[11px]">Window:</span>
             <select
               value={selectedDayRange}
               onChange={(e) => setSelectedDayRange(Number(e.target.value))}
-              className="bg-slate-900 border border-white/10 text-slate-200 rounded-md px-2.5 py-1 text-xs focus:outline-none focus:border-cyan-500/50"
+              className="bg-slate-50 border border-slate-300 text-slate-800 rounded px-2.5 py-1 text-xs focus:outline-none focus:border-slate-500"
             >
-              <option value={1}>Last 24 Hours (1 Day)</option>
-              <option value={2}>Last 48 Hours (2 Days)</option>
-              <option value={5}>Last 5 Days</option>
-              <option value={7}>Last 7 Days (1 Week)</option>
+              <option value={1}>Past 24 Hours</option>
+              <option value={2}>Past 48 Hours</option>
+              <option value={5}>Past 5 Days</option>
+              <option value={7}>Past 7 Days</option>
             </select>
           </div>
 
           {/* Region Preset Selector */}
-          <div className="flex items-center gap-1.5 text-xs text-slate-300">
-            <Filter className="w-3.5 h-3.5 text-amber-400" />
-            <span className="font-semibold text-slate-400">Sector:</span>
+          <div className="flex items-center gap-1.5 text-slate-700">
+            <Filter className="w-3.5 h-3.5 text-slate-500" />
+            <span className="font-semibold text-slate-600 uppercase tracking-wider text-[11px]">Sector:</span>
             <select
               value={selectedRegionPreset}
               onChange={(e) => setSelectedRegionPreset(e.target.value)}
-              className="bg-slate-900 border border-white/10 text-slate-200 rounded-md px-2.5 py-1 text-xs focus:outline-none focus:border-amber-500/50"
+              className="bg-slate-50 border border-slate-300 text-slate-800 rounded px-2.5 py-1 text-xs focus:outline-none focus:border-slate-500"
             >
-              <option value="australia">Northern Australia Savanna</option>
               <option value="all">Global Multi-Sector</option>
+              <option value="australia">Northern Australia Savanna</option>
               <option value="us">Western United States</option>
               <option value="amazon">Amazon Basin & Cerrado</option>
             </select>
@@ -208,35 +215,35 @@ export default function OverviewPage() {
         {/* Status / Notice Pill */}
         <div className="flex items-center gap-2 text-xs font-mono">
           {isLive ? (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-semibold">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-              LIVE TELEMETRY ACTIVE
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold text-[11px]">
+              <span className="w-2 h-2 rounded-full bg-emerald-600" />
+              NASA FIRMS LIVE
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">
-              <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
-              DEMO TELEMETRY FIXTURES
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 text-[11px]">
+              <span className="w-2 h-2 rounded-full bg-amber-600" />
+              DEMO FIXTURES BUFFER
             </span>
           )}
           {lastFetchTime && (
             <span className="text-slate-500 text-[11px] hidden sm:inline">
-              Fetched: {new Date(lastFetchTime).toLocaleTimeString()}
+              Sync: {new Date(lastFetchTime).toLocaleTimeString()}
             </span>
           )}
         </div>
       </div>
 
-      {/* Backend Notice or Offline Banner if any */}
+      {/* Notice Banner if any */}
       {notice && (
-        <div className="p-3 rounded-lg bg-slate-900/90 border border-white/8 text-xs text-slate-300 flex items-center justify-between gap-3">
+        <div className="p-3 rounded-md bg-slate-100 border border-slate-300 text-xs text-slate-700 flex items-center justify-between gap-3 font-mono">
           <div className="flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-cyan-400 shrink-0" />
+            <AlertCircle className="w-4 h-4 text-slate-600 shrink-0" />
             <span>{notice}</span>
           </div>
           {error && (
             <button
               onClick={() => loadData(true)}
-              className="text-[11px] font-mono text-cyan-400 hover:text-cyan-300 underline shrink-0 cursor-pointer"
+              className="text-[11px] font-mono text-slate-900 underline shrink-0 cursor-pointer"
             >
               Retry Sync
             </button>
@@ -244,33 +251,46 @@ export default function OverviewPage() {
         </div>
       )}
 
-      {/* KPI Cards Grid */}
+      {/* Compact Telemetry Strip */}
       <KpiCards kpis={kpis} isLive={isLive} />
 
-      {/* Main Interactive Map */}
+      {/* Main Geospatial Workspace Dominated by Map + Inspector */}
       <div className="space-y-2">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between text-xs text-slate-600 px-1">
           <div className="flex items-center gap-2">
-            <Radio className="w-4 h-4 text-orange-400 animate-pulse" />
-            <h2 className="text-sm font-semibold text-white uppercase tracking-wider">
-              Live Geospatial Hotspot Sensor Matrix
+            <span className="w-2 h-2 rounded-full bg-orange-600" />
+            <h2 className="font-semibold text-slate-900 uppercase tracking-wider text-xs">
+              Geospatial Hotspot Radiometry Canvas
             </h2>
           </div>
-          <span className="text-xs text-slate-400 font-mono">
-            Click any fire node to inspect radiance & coordinates
+          <span className="font-mono text-[11px] text-slate-500">
+            Click any fire node to inspect radiance, brightness & coordinates
           </span>
         </div>
 
-        <FireMap
-          heightClass="h-[480px]"
-          selectedHotspot={selectedHotspot}
-          onHotspotSelect={(hotspot) => setSelectedHotspot(hotspot)}
-          observations={observations}
-          isLive={isLive}
-        />
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 items-start">
+          {/* Map Canvas (3 columns) */}
+          <div className="lg:col-span-3">
+            <FireMap
+              heightClass="h-[520px]"
+              selectedHotspot={selectedHotspot}
+              onHotspotSelect={(hotspot) => setSelectedHotspot(hotspot)}
+              observations={observations}
+              isLive={isLive}
+            />
+          </div>
+
+          {/* Observation Telemetry Inspector (1 column) */}
+          <div className="lg:col-span-1">
+            <ObservationInspector
+              observation={selectedHotspot}
+              className="h-[520px] overflow-y-auto"
+            />
+          </div>
+        </div>
       </div>
 
-      {/* Trend Analysis and Regional Distribution Grid */}
+      {/* Trends & Regional Regimes Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <ActivityTrendChart />
         <RegionalBreakdown />
@@ -284,12 +304,12 @@ export default function OverviewPage() {
         isLive={isLive}
       />
 
-      {/* Detailed Hotspot Log Table */}
+      {/* Detailed Observation Registry Table */}
       <HotspotTable
         hotspots={observations}
         onSelectHotspot={(hotspot) => {
           setSelectedHotspot(hotspot);
-          window.scrollTo({ top: 320, behavior: "smooth" });
+          window.scrollTo({ top: 340, behavior: "smooth" });
         }}
         isLive={isLive}
       />

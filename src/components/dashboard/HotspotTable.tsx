@@ -1,24 +1,14 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import Link from "next/link";
-import {
-  HotspotObservation,
-  SensorType,
-} from "@/types/fire";
-import {
-  formatFRP,
-  formatCoordinates,
-  getFRPColor,
-  getSensorBadgeClass,
-} from "@/lib/utils";
+import { HotspotObservation, SensorType } from "@/types/fire";
+import { formatCoordinates } from "@/lib/utils";
 import {
   Search,
   Copy,
   Check,
-  ExternalLink,
-  Flame,
   ArrowUpDown,
+  Eye,
 } from "lucide-react";
 import { EmptyState } from "@/components/shared/EmptyState";
 
@@ -38,6 +28,8 @@ export const HotspotTable: React.FC<HotspotTableProps> = ({
   const [sortField, setSortField] = useState<"frpMw" | "confidence" | "acquisitionTimeUtc">("frpMw");
   const [sortAsc, setSortAsc] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const pageSize = 15;
 
   const handleCopyCoords = (hotspot: HotspotObservation, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -51,41 +43,34 @@ export const HotspotTable: React.FC<HotspotTableProps> = ({
   const filteredHotspots = useMemo(() => {
     return hotspots
       .filter((h) => {
-        // Sensor filter
         if (sensorFilter !== "ALL") {
-          if (sensorFilter === "HARMONIZED" && !h.isHarmonizedMatch) {
-            return false;
-          }
-          if (sensorFilter !== "HARMONIZED" && h.sensor !== sensorFilter) {
-            return false;
-          }
+          if (sensorFilter === "HARMONIZED" && !h.isHarmonizedMatch) return false;
+          if (sensorFilter !== "HARMONIZED" && h.sensor !== sensorFilter) return false;
         }
-        // Search term
-        if (searchTerm.trim() !== "") {
+
+        if (searchTerm.trim()) {
           const term = searchTerm.toLowerCase();
-          const matchLoc =
-            h.region.toLowerCase().includes(term) ||
-            h.country.toLowerCase().includes(term) ||
-            h.landCover.toLowerCase().includes(term) ||
-            h.id.toLowerCase().includes(term) ||
-            h.satellite.toLowerCase().includes(term);
-          if (!matchLoc) return false;
+          const matchId = h.id.toLowerCase().includes(term);
+          const matchSat = h.satellite.toLowerCase().includes(term);
+          const matchRegion = h.region.toLowerCase().includes(term);
+          const matchCountry = h.country.toLowerCase().includes(term);
+          if (!matchId && !matchSat && !matchRegion && !matchCountry) return false;
         }
+
         return true;
       })
       .sort((a, b) => {
-        const valA = a[sortField];
-        const valB = b[sortField];
-        if (typeof valA === "string" || typeof valB === "string") {
-          return sortAsc
-            ? String(valA ?? "").localeCompare(String(valB ?? ""))
-            : String(valB ?? "").localeCompare(String(valA ?? ""));
-        }
-        const numA = typeof valA === "number" ? valA : -1;
-        const numB = typeof valB === "number" ? valB : -1;
-        return sortAsc ? numA - numB : numB - numA;
+        const valA: string | number = a[sortField] ?? 0;
+        const valB: string | number = b[sortField] ?? 0;
+
+        if (valA < valB) return sortAsc ? -1 : 1;
+        if (valA > valB) return sortAsc ? 1 : -1;
+        return 0;
       });
   }, [hotspots, sensorFilter, searchTerm, sortField, sortAsc]);
+
+  const totalPages = Math.ceil(filteredHotspots.length / pageSize) || 1;
+  const paginatedHotspots = filteredHotspots.slice((page - 1) * pageSize, page * pageSize);
 
   const toggleSort = (field: "frpMw" | "confidence" | "acquisitionTimeUtc") => {
     if (sortField === field) {
@@ -97,241 +82,152 @@ export const HotspotTable: React.FC<HotspotTableProps> = ({
   };
 
   return (
-    <div className="rounded-xl glass-panel p-5 flex flex-col space-y-4">
-      {/* Table Header and Filter Controls */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-3 border-b border-white/5">
+    <div className="bg-white border border-slate-200 rounded-lg shadow-sm space-y-3">
+      {/* Table Toolbar */}
+      <div className="p-3.5 sm:p-4 border-b border-slate-200 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2">
-            <Flame className="w-4 h-4 text-orange-400" />
-            <h3 className="text-base font-semibold text-white">
-              Recent Hotspot Detections Log
-            </h3>
-            <span className="px-2 py-0.5 rounded text-[11px] font-mono bg-orange-500/10 text-orange-400 border border-orange-500/20">
-              {filteredHotspots.length} Records
-            </span>
-            {isLive ? (
-              <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-semibold">
-                NASA FIRMS LIVE
-              </span>
-            ) : (
-              <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-amber-500/10 text-amber-300 border border-amber-500/20">
-                DEMO FIXTURES
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-slate-400 mt-0.5">
-            {isLive
-              ? "Live NASA FIRMS satellite observations streamed via backend"
-              : "Synchronized synthetic satellite telemetry buffer (MODIS 1km & VIIRS 375m)"}
+          <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wider">
+            Satellite Hotspot Observation Registry
+          </h3>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Individual active fire pixels indexed from MODIS and VIIRS telemetry streams {isLive ? "(NASA FIRMS NRT)" : "(Synthetic Buffer)"}
           </p>
         </div>
 
-        {/* Filter Toolbar */}
+        {/* Controls */}
         <div className="flex flex-wrap items-center gap-2.5">
-          {/* Search box */}
-          <div className="relative min-w-[200px]">
-            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          {/* Search Box */}
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
+              placeholder="Search ID, Sector, Sat..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Filter by country, region, biome..."
-              className="w-full pl-8 pr-3 py-1.5 rounded-lg text-xs bg-slate-900/80 border border-white/10 text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-orange-500/50"
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setPage(1);
+              }}
+              className="bg-slate-50 border border-slate-300 text-xs text-slate-800 rounded-md pl-8 pr-3 py-1.5 focus:outline-none focus:border-slate-500 w-44 sm:w-56"
             />
           </div>
 
-          {/* Sensor Dropdown/Tabs */}
-          <div className="flex items-center gap-1 p-1 bg-slate-900/80 rounded-lg border border-white/8 text-xs">
-            <button
-              onClick={() => setSensorFilter("ALL")}
-              className={`px-2.5 py-1 rounded-md font-medium transition-all ${
-                sensorFilter === "ALL"
-                  ? "bg-slate-700/80 text-white"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              All
-            </button>
-            <button
-              onClick={() => setSensorFilter("VIIRS")}
-              className={`px-2.5 py-1 rounded-md font-medium transition-all ${
-                sensorFilter === "VIIRS"
-                  ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              VIIRS 375m
-            </button>
-            <button
-              onClick={() => setSensorFilter("MODIS")}
-              className={`px-2.5 py-1 rounded-md font-medium transition-all ${
-                sensorFilter === "MODIS"
-                  ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              MODIS 1km
-            </button>
-            <button
-              onClick={() => setSensorFilter("HARMONIZED")}
-              className={`px-2.5 py-1 rounded-md font-medium transition-all ${
-                sensorFilter === "HARMONIZED"
-                  ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              Harmonized
-            </button>
+          {/* Sensor Filter */}
+          <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-md border border-slate-200 text-xs">
+            {(["ALL", "VIIRS", "MODIS", "HARMONIZED"] as SensorType[]).map((type) => (
+              <button
+                key={type}
+                onClick={() => {
+                  setSensorFilter(type);
+                  setPage(1);
+                }}
+                className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
+                  sensorFilter === type
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                {type === "ALL" ? "All" : type === "HARMONIZED" ? "Harmonized" : type}
+              </button>
+            ))}
           </div>
         </div>
       </div>
 
-      {/* Table Content */}
-      {filteredHotspots.length === 0 ? (
-        <EmptyState
-          title="No Hotspot Detections Match"
-          description={`No observations found matching "${searchTerm}". Try resetting your filter.`}
-          onReset={() => {
-            setSearchTerm("");
-            setSensorFilter("ALL");
-          }}
-          resetLabel="Clear Search & Filters"
-        />
+      {/* Table Canvas */}
+      {paginatedHotspots.length === 0 ? (
+        <div className="p-6">
+          <EmptyState
+            title="No Observation Pixels Found"
+            description="No active fire records match the search or filter criteria in the current telemetry buffer."
+            onReset={() => {
+              setSearchTerm("");
+              setSensorFilter("ALL");
+            }}
+          />
+        </div>
       ) : (
-        <div className="overflow-x-auto -mx-5 px-5">
-          <table className="w-full text-left text-xs border-collapse">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
             <thead>
-              <tr className="border-b border-white/8 text-slate-400 font-medium tracking-wide uppercase text-[10px]">
-                <th className="py-2.5 pr-4 pl-2">ID & Time</th>
-                <th className="py-2.5 px-4">Location / Biome</th>
-                <th className="py-2.5 px-4">Sensor & Platform</th>
-                <th
-                  className="py-2.5 px-4 cursor-pointer hover:text-orange-400 select-none"
-                  onClick={() => toggleSort("frpMw")}
-                >
-                  <div className="flex items-center gap-1">
-                    <span>Fire Radiative Power (MW)</span>
+              <tr className="border-b border-slate-200 text-slate-500 font-mono text-[10px] uppercase tracking-wider bg-slate-50">
+                <th className="py-2.5 px-3">Observation ID</th>
+                <th className="py-2.5 px-3">Sensor / Satellite</th>
+                <th className="py-2.5 px-3">Sector Coordinates</th>
+                <th className="py-2.5 px-3">
+                  <button
+                    onClick={() => toggleSort("frpMw")}
+                    className="flex items-center gap-1 hover:text-slate-800 cursor-pointer"
+                  >
+                    <span>FRP (MW)</span>
                     <ArrowUpDown className="w-3 h-3" />
-                  </div>
+                  </button>
                 </th>
-                <th
-                  className="py-2.5 px-4 cursor-pointer hover:text-orange-400 select-none"
-                  onClick={() => toggleSort("confidence")}
-                >
-                  <div className="flex items-center gap-1">
+                <th className="py-2.5 px-3">Brightness (K)</th>
+                <th className="py-2.5 px-3">
+                  <button
+                    onClick={() => toggleSort("confidence")}
+                    className="flex items-center gap-1 hover:text-slate-800 cursor-pointer"
+                  >
                     <span>Confidence</span>
                     <ArrowUpDown className="w-3 h-3" />
-                  </div>
+                  </button>
                 </th>
-                <th className="py-2.5 px-4">Coordinates</th>
-                <th className="py-2.5 pl-4 pr-2 text-right">Actions</th>
+                <th className="py-2.5 px-3">
+                  <button
+                    onClick={() => toggleSort("acquisitionTimeUtc")}
+                    className="flex items-center gap-1 hover:text-slate-800 cursor-pointer"
+                  >
+                    <span>Acquisition (UTC)</span>
+                    <ArrowUpDown className="w-3 h-3" />
+                  </button>
+                </th>
+                <th className="py-2.5 px-3 text-right">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/5 text-slate-300">
-              {filteredHotspots.map((hotspot) => {
-                const frpInfo = getFRPColor(hotspot.frpMw);
-                const sensorBadge = getSensorBadgeClass(
-                  hotspot.isHarmonizedMatch ? "HARMONIZED" : hotspot.sensor
-                );
+            <tbody className="divide-y divide-slate-100 font-mono text-slate-700">
+              {paginatedHotspots.map((hotspot) => {
+                const isVIIRS = hotspot.sensor === "VIIRS";
+                const frpVal = hotspot.frpMw ?? 0;
 
                 return (
                   <tr
                     key={hotspot.id}
                     onClick={() => onSelectHotspot && onSelectHotspot(hotspot)}
-                    className="hover:bg-slate-800/40 transition-colors group cursor-pointer"
+                    className="hover:bg-slate-50/80 transition-colors cursor-pointer"
                   >
-                    {/* ID & Time */}
-                    <td className="py-3 pr-4 pl-2">
-                      <div className="font-mono text-xs font-semibold text-slate-200">
-                        {hotspot.id}
-                      </div>
-                      <div className="text-[11px] text-slate-500 font-mono mt-0.5">
-                        {hotspot.acquisitionDate} &bull; {hotspot.acquisitionTimeUtc ? `${hotspot.acquisitionTimeUtc} UTC` : "Time Unspecified"}
-                      </div>
-                    </td>
-
-                    {/* Location / Biome */}
-                    <td className="py-3 px-4">
-                      <div className="font-medium text-slate-200">
-                        {hotspot.region}, {hotspot.country}
-                      </div>
-                      <div className="text-[11px] text-slate-400 truncate max-w-[200px]">
-                        {hotspot.landCover}
-                      </div>
-                    </td>
-
-                    {/* Sensor & Satellite */}
-                    <td className="py-3 px-4">
+                    <td className="py-2.5 px-3 font-semibold text-slate-900">
                       <div className="flex items-center gap-1.5">
-                        <span
-                          className={`inline-block px-2 py-0.5 rounded text-[10px] font-mono font-medium border ${sensorBadge}`}
-                        >
-                          {hotspot.sensor}
-                        </span>
+                        <span>{hotspot.id}</span>
                         {hotspot.isHarmonizedMatch && (
-                          <span className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold">
-                            FUSED
+                          <span className="px-1 py-0.2 rounded text-[9px] bg-indigo-50 text-indigo-700 border border-indigo-200">
+                            MATCH
                           </span>
                         )}
                       </div>
-                      <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                        {hotspot.satellite} &bull; Scan {hotspot.scanAngle != null ? `${hotspot.scanAngle}°` : "N/A"}
-                      </div>
                     </td>
 
-                    {/* FRP */}
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono font-semibold border ${frpInfo.badge}`}
-                        >
-                          <Flame className="w-3 h-3" />
-                          {formatFRP(hotspot.frpMw)}
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-slate-400 mt-0.5 block font-mono">
-                        Brightness {hotspot.brightnessKelvin != null ? `${hotspot.brightnessKelvin} K` : "N/A"}
+                    <td className="py-2.5 px-3">
+                      <span
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                          isVIIRS
+                            ? "bg-sky-50 text-sky-800 border border-sky-200"
+                            : "bg-purple-50 text-purple-800 border border-purple-200"
+                        }`}
+                      >
+                        {hotspot.sensor} &bull; {hotspot.satellite}
                       </span>
                     </td>
 
-                    {/* Confidence */}
-                    <td className="py-3 px-4">
-                      {hotspot.confidence != null ? (
-                        <div className="flex items-center gap-2">
-                          <div className="w-16 bg-slate-800 rounded-full h-1.5 overflow-hidden">
-                            <div
-                              className={`h-full ${
-                                hotspot.confidence >= 80
-                                  ? "bg-emerald-400"
-                                  : hotspot.confidence >= 50
-                                  ? "bg-amber-400"
-                                  : "bg-yellow-400"
-                              }`}
-                              style={{ width: `${hotspot.confidence}%` }}
-                            />
-                          </div>
-                          <span className="font-mono text-xs font-semibold text-slate-200">
-                            {hotspot.confidence}%
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="font-mono text-xs text-slate-500 italic">
-                          Unrated
-                        </span>
-                      )}
-                    </td>
-
-                    {/* Coordinates */}
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-1.5 font-mono text-[11px] text-slate-400">
+                    <td className="py-2.5 px-3 text-slate-600">
+                      <div className="flex items-center gap-1.5">
                         <span>{formatCoordinates(hotspot.latitude, hotspot.longitude)}</span>
                         <button
                           onClick={(e) => handleCopyCoords(hotspot, e)}
-                          className="p-1 text-slate-500 hover:text-orange-400 rounded transition-colors"
-                          title="Copy Latitude, Longitude"
+                          title="Copy Lat/Lon"
+                          className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-200/60"
                         >
                           {copiedId === hotspot.id ? (
-                            <Check className="w-3 h-3 text-emerald-400" />
+                            <Check className="w-3 h-3 text-emerald-600" />
                           ) : (
                             <Copy className="w-3 h-3" />
                           )}
@@ -339,16 +235,45 @@ export const HotspotTable: React.FC<HotspotTableProps> = ({
                       </div>
                     </td>
 
-                    {/* Actions */}
-                    <td className="py-3 pl-4 pr-2 text-right">
-                      <Link
-                        href={`/map?lat=${hotspot.latitude}&lon=${hotspot.longitude}&zoom=9`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="inline-flex items-center gap-1 text-[11px] font-medium text-orange-400 hover:text-orange-300 bg-orange-500/10 hover:bg-orange-500/20 px-2.5 py-1 rounded-md border border-orange-500/20 transition-all"
+                    <td className="py-2.5 px-3 font-bold">
+                      <span
+                        className={
+                          frpVal > 300
+                            ? "text-red-700"
+                            : frpVal > 100
+                            ? "text-orange-700"
+                            : "text-slate-800"
+                        }
                       >
-                        <span>View</span>
-                        <ExternalLink className="w-3 h-3" />
-                      </Link>
+                        {hotspot.frpMw != null ? `${hotspot.frpMw.toFixed(1)} MW` : "N/A"}
+                      </span>
+                    </td>
+
+                    <td className="py-2.5 px-3 text-slate-800">
+                      {hotspot.brightnessKelvin != null ? `${hotspot.brightnessKelvin.toFixed(1)} K` : "N/A"}
+                    </td>
+
+                    <td className="py-2.5 px-3">
+                      <span className="text-emerald-700 font-semibold">
+                        {hotspot.confidence != null ? `${hotspot.confidence}%` : "Nominal"}
+                      </span>
+                    </td>
+
+                    <td className="py-2.5 px-3 text-slate-600">
+                      {hotspot.acquisitionTimeUtc ?? hotspot.acquisitionDate}
+                    </td>
+
+                    <td className="py-2.5 px-3 text-right">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onSelectHotspot) onSelectHotspot(hotspot);
+                        }}
+                        className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded border border-slate-200 transition-colors"
+                      >
+                        <Eye className="w-3 h-3 text-slate-500" />
+                        <span>Inspect</span>
+                      </button>
                     </td>
                   </tr>
                 );
@@ -357,6 +282,33 @@ export const HotspotTable: React.FC<HotspotTableProps> = ({
           </table>
         </div>
       )}
+
+      {/* Table Pagination Footer */}
+      <div className="p-3 border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600 font-mono">
+        <div>
+          Showing {paginatedHotspots.length} of {filteredHotspots.length} matching observations
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => setPage(Math.max(1, page - 1))}
+            disabled={page <= 1}
+            className="px-2.5 py-1 rounded bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 disabled:opacity-40 transition-colors cursor-pointer"
+          >
+            Previous
+          </button>
+          <span className="px-2 py-1 text-slate-800 font-medium">
+            Page {page} of {totalPages}
+          </span>
+          <button
+            onClick={() => setPage(Math.min(totalPages, page + 1))}
+            disabled={page >= totalPages}
+            className="px-2.5 py-1 rounded bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 disabled:opacity-40 transition-colors cursor-pointer"
+          >
+            Next
+          </button>
+        </div>
+      </div>
     </div>
   );
 };

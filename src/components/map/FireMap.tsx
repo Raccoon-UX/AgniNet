@@ -4,15 +4,13 @@ import React, { useEffect, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { HotspotObservation, SensorType } from "@/types/fire";
-import { DEMO_HOTSPOTS, DEMO_REGIONS } from "@/data/fixtures";
-import { formatCoordinates, getFRPColor } from "@/lib/utils";
+import { DEMO_HOTSPOTS } from "@/data/fixtures";
+import { formatCoordinates } from "@/lib/utils";
 import {
   Layers,
   ZoomIn,
   ZoomOut,
-  Maximize2,
-  Compass,
-  Flame,
+  RotateCcw,
 } from "lucide-react";
 
 interface FireMapProps {
@@ -26,10 +24,27 @@ interface FireMapProps {
   isLive?: boolean;
 }
 
+type BasemapStyle = "dark" | "light" | "satellite";
+
+const BASEMAP_TILES: Record<BasemapStyle, { url: string; attribution: string }> = {
+  dark: {
+    url: "https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+    attribution: "&copy; Esri &bull; HERE, Garmin, OpenStreetMap",
+  },
+  light: {
+    url: "https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+    attribution: "&copy; Esri &bull; HERE, Garmin, OpenStreetMap",
+  },
+  satellite: {
+    url: "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    attribution: "&copy; Esri &bull; Earthstar Geographics",
+  },
+};
+
 export const FireMap: React.FC<FireMapProps> = ({
   initialCenter = [0, 20],
   initialZoom = 2,
-  heightClass = "h-[550px]",
+  heightClass = "h-[540px]",
   selectedHotspot,
   onHotspotSelect,
   showControlsBar = true,
@@ -42,8 +57,10 @@ export const FireMap: React.FC<FireMapProps> = ({
 
   const [sensorFilter, setSensorFilter] = useState<SensorType>("ALL");
   const [minFrp, setMinFrp] = useState<number>(0);
-  const [activeRegion, setActiveRegion] = useState<string>("global");
+  const [basemap, setBasemap] = useState<BasemapStyle>("dark");
   const [mapLoaded, setMapLoaded] = useState<boolean>(false);
+  const [cursorCoords, setCursorCoords] = useState<{ lng: number; lat: number } | null>(null);
+  const [zoomLevel, setZoomLevel] = useState<number>(initialZoom);
 
   const activeHotspots = observations && observations.length > 0 ? observations : DEMO_HOTSPOTS;
 
@@ -51,26 +68,25 @@ export const FireMap: React.FC<FireMapProps> = ({
   useEffect(() => {
     if (!mapContainer.current || mapInstance.current) return;
 
+    const tileInfo = BASEMAP_TILES["dark"];
+
     const map = new maplibregl.Map({
       container: mapContainer.current,
       style: {
         version: 8,
         sources: {
-          "carto-dark": {
+          "base-tiles": {
             type: "raster",
-            tiles: [
-              "https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png",
-            ],
+            tiles: [tileInfo.url],
             tileSize: 256,
-            attribution:
-              "&copy; OpenStreetMap contributors &copy; CARTO &bull; AgniNet Demo",
+            attribution: tileInfo.attribution,
           },
         },
         layers: [
           {
-            id: "carto-dark-base",
+            id: "base-tiles-layer",
             type: "raster",
-            source: "carto-dark",
+            source: "base-tiles",
             minzoom: 0,
             maxzoom: 19,
           },
@@ -89,6 +105,17 @@ export const FireMap: React.FC<FireMapProps> = ({
     map.on("load", () => {
       mapInstance.current = map;
       setMapLoaded(true);
+      setZoomLevel(map.getZoom());
+    });
+
+    map.on("mousemove", (e) => {
+      setCursorCoords({ lng: e.lngLat.lng, lat: e.lngLat.lat });
+    });
+
+    map.on("zoom", () => {
+      if (mapInstance.current) {
+        setZoomLevel(mapInstance.current.getZoom());
+      }
     });
 
     return () => {
@@ -96,6 +123,21 @@ export const FireMap: React.FC<FireMapProps> = ({
       mapInstance.current = null;
     };
   }, [initialCenter, initialZoom]);
+
+  // Switch basemap layer dynamically
+  useEffect(() => {
+    if (!mapInstance.current || !mapLoaded) return;
+    const map = mapInstance.current;
+    const tileInfo = BASEMAP_TILES[basemap];
+
+    const style = map.getStyle();
+    if (style && style.sources && style.sources["base-tiles"]) {
+      const source = map.getSource("base-tiles") as maplibregl.RasterTileSource;
+      if (source && typeof source.setTiles === "function") {
+        source.setTiles([tileInfo.url]);
+      }
+    }
+  }, [basemap, mapLoaded]);
 
   // Update hotspot markers based on filter state
   useEffect(() => {
@@ -118,70 +160,84 @@ export const FireMap: React.FC<FireMapProps> = ({
       return h.sensor === sensorFilter;
     });
 
-    // Add custom markers with glowing effects
+    // Add crisp scientific markers
     visibleHotspots.forEach((hotspot) => {
-      const frpColor = getFRPColor(hotspot.frpMw);
-
-      // Create custom DOM element for marker
-      const el = document.createElement("div");
-      el.className = "cursor-pointer group relative flex items-center justify-center";
-      
       const frpVal = hotspot.frpMw ?? 0;
-      const size = frpVal > 300 ? 22 : frpVal > 100 ? 18 : 14;
+      const isHarmonized = hotspot.isHarmonizedMatch;
+      const isVIIRS = hotspot.sensor === "VIIRS";
+
+      // Color coding: VIIRS = Cyan, MODIS = Purple, High FRP = Burnt Orange/Red
+      let markerColor = isVIIRS ? "#0284c7" : "#7c3aed";
+      if (frpVal > 300) markerColor = "#dc2626";
+      else if (frpVal > 100) markerColor = "#ea580c";
+
+      // Size calculation
+      const size = frpVal > 300 ? 16 : frpVal > 100 ? 13 : 9;
+
+      const el = document.createElement("div");
+      el.className = "cursor-pointer transition-transform hover:scale-125 flex items-center justify-center";
       el.style.width = `${size}px`;
       el.style.height = `${size}px`;
 
-      el.innerHTML = `
-        <div class="absolute inset-0 rounded-full animate-ping opacity-60" style="background-color: ${frpColor.hex}; animation-duration: ${frpVal > 400 ? '1.5s' : '3s'};"></div>
-        <div class="relative w-full h-full rounded-full border-2 border-white/80 shadow-lg flex items-center justify-center transition-transform group-hover:scale-125" style="background-color: ${frpColor.hex}; box-shadow: 0 0 15px ${frpColor.hex};">
-          <div class="w-1.5 h-1.5 rounded-full bg-white"></div>
-        </div>
-      `;
+      if (isHarmonized) {
+        // Dual-sensor matched glyph: outer ring + solid core
+        el.innerHTML = `
+          <div style="width: ${size + 4}px; height: ${size + 4}px; border-radius: 9999px; border: 2px solid #4f46e5; background-color: ${markerColor}; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.5);">
+            <div style="width: 3px; height: 3px; border-radius: 9999px; background-color: #ffffff;"></div>
+          </div>
+        `;
+      } else {
+        // Standard observation marker: solid crisp circle with white stroke
+        el.innerHTML = `
+          <div style="width: ${size}px; height: ${size}px; border-radius: 9999px; background-color: ${markerColor}; border: 1.5px solid #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.4);"></div>
+        `;
+      }
 
       // Popup Content
       const popupHtml = `
-        <div class="space-y-2 text-xs">
-          <div class="flex items-center justify-between pb-1.5 border-b border-white/10">
-            <span class="font-mono font-bold text-white">${hotspot.id}</span>
-            <span class="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold" style="background-color: ${frpColor.hex}22; color: ${frpColor.hex}; border: 1px solid ${frpColor.hex}44;">
-              ${hotspot.frpMw != null ? `${hotspot.frpMw.toFixed(1)} MW FRP` : "FRP Unreported"}
+        <div style="font-family: ui-sans-serif, system-ui, sans-serif; font-size: 11px; line-height: 1.4;">
+          <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #334155; padding-bottom: 6px; margin-bottom: 6px;">
+            <span style="font-family: monospace; font-weight: 700; color: #f8fafc;">${hotspot.id}</span>
+            <span style="font-family: monospace; font-size: 10px; padding: 2px 5px; border-radius: 3px; background-color: ${markerColor}25; color: ${markerColor}; border: 1px solid ${markerColor}60; font-weight: 600;">
+              ${hotspot.frpMw != null ? `${hotspot.frpMw.toFixed(1)} MW FRP` : "FRP N/A"}
             </span>
           </div>
 
-          <div class="grid grid-cols-2 gap-2 text-[11px]">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 10px;">
             <div>
-              <span class="text-slate-400 block text-[10px]">Sensor / Sat</span>
-              <span class="font-semibold text-slate-200">${hotspot.sensor} &bull; ${hotspot.satellite}</span>
+              <span style="color: #94a3b8; display: block; font-size: 9px; text-transform: uppercase;">Sensor / Platform</span>
+              <span style="color: #f1f5f9; font-weight: 600;">${hotspot.sensor} &bull; ${hotspot.satellite}</span>
             </div>
             <div>
-              <span class="text-slate-400 block text-[10px]">Brightness Temp</span>
-              <span class="font-mono text-slate-200">${hotspot.brightnessKelvin != null ? `${hotspot.brightnessKelvin} K` : "N/A"}</span>
+              <span style="color: #94a3b8; display: block; font-size: 9px; text-transform: uppercase;">Brightness Temp</span>
+              <span style="color: #f1f5f9; font-family: monospace;">${hotspot.brightnessKelvin != null ? `${hotspot.brightnessKelvin} K` : "N/A"}</span>
             </div>
             <div>
-              <span class="text-slate-400 block text-[10px]">Confidence</span>
-              <span class="font-mono text-emerald-400 font-semibold">${hotspot.confidence != null ? `${hotspot.confidence}%` : "Unrated"}</span>
+              <span style="color: #94a3b8; display: block; font-size: 9px; text-transform: uppercase;">Confidence</span>
+              <span style="color: #10b981; font-family: monospace;">${hotspot.confidence != null ? `${hotspot.confidence}%` : "Standard"}</span>
             </div>
             <div>
-              <span class="text-slate-400 block text-[10px]">Acquired (UTC)</span>
-              <span class="font-mono text-slate-200">${hotspot.acquisitionTimeUtc ?? "Unspecified"}</span>
+              <span style="color: #94a3b8; display: block; font-size: 9px; text-transform: uppercase;">Acquisition UTC</span>
+              <span style="color: #f1f5f9; font-family: monospace;">${hotspot.acquisitionTimeUtc ?? hotspot.acquisitionDate}</span>
             </div>
           </div>
 
-          <div class="pt-1.5 border-t border-white/10">
-            <span class="text-slate-400 block text-[10px]">Location & Biome</span>
-            <span class="text-slate-200 text-[11px] block truncate">${hotspot.region}, ${hotspot.country}</span>
-            <span class="text-slate-400 text-[10px] block truncate">${hotspot.landCover}</span>
+          <div style="margin-top: 6px; padding-top: 6px; border-top: 1px solid #334155;">
+            <span style="color: #94a3b8; display: block; font-size: 9px; text-transform: uppercase;">Sector Coordinates</span>
+            <span style="color: #cbd5e1; font-family: monospace; font-size: 10px;">${formatCoordinates(hotspot.latitude, hotspot.longitude)}</span>
+            <span style="color: #94a3b8; font-size: 9px; display: block; margin-top: 2px;">${hotspot.region}, ${hotspot.country}</span>
           </div>
 
-          <div class="pt-1 flex items-center justify-between text-[10px] font-mono text-slate-500">
-            <span>${formatCoordinates(hotspot.latitude, hotspot.longitude)}</span>
-            ${hotspot.isHarmonizedMatch ? '<span class="text-amber-400 font-semibold">DUAL-SENSOR MATCH</span>' : ''}
-          </div>
+          ${isHarmonized ? `
+            <div style="margin-top: 6px; padding: 3px 6px; background-color: #312e81; border: 1px solid #4338ca; border-radius: 3px; color: #c7d2fe; font-size: 9px; font-family: monospace; font-weight: 600; text-align: center;">
+              HARMONIZED DUAL-SENSOR EVENT
+            </div>
+          ` : ''}
         </div>
       `;
 
       const popup = new maplibregl.Popup({
-        offset: 15,
+        offset: 12,
         closeButton: true,
         closeOnClick: true,
       }).setHTML(popupHtml);
@@ -199,213 +255,170 @@ export const FireMap: React.FC<FireMapProps> = ({
 
       markersRef.current.push(marker);
     });
-  }, [sensorFilter, minFrp, mapLoaded, onHotspotSelect, activeHotspots]);
+  }, [activeHotspots, sensorFilter, minFrp, mapLoaded, onHotspotSelect]);
 
-  // Handle fly to selected hotspot if prop changes
+  // Center on selected hotspot when updated externally
   useEffect(() => {
     if (!mapInstance.current || !selectedHotspot) return;
-    mapInstance.current.flyTo({
+    mapInstance.current.easeTo({
       center: [selectedHotspot.longitude, selectedHotspot.latitude],
-      zoom: 7,
-      essential: true,
-      duration: 2000,
+      duration: 800,
     });
   }, [selectedHotspot]);
 
-  // Fly to region preset
-  const handleFlyToRegion = (regionId: string) => {
-    setActiveRegion(regionId);
-    if (!mapInstance.current) return;
-
-    if (regionId === "global") {
-      mapInstance.current.flyTo({
-        center: [0, 20],
-        zoom: 2,
-        duration: 2000,
-      });
-      return;
-    }
-
-    const reg = DEMO_REGIONS.find((r) => r.regionId === regionId);
-    if (reg) {
-      mapInstance.current.flyTo({
-        center: [reg.centerLon, reg.centerLat],
-        zoom: reg.zoomLevel,
-        duration: 2000,
-      });
-    }
+  const handleZoomIn = () => mapInstance.current?.zoomIn();
+  const handleZoomOut = () => mapInstance.current?.zoomOut();
+  const handleResetView = () => {
+    mapInstance.current?.flyTo({
+      center: initialCenter,
+      zoom: initialZoom,
+      duration: 1000,
+    });
   };
 
   return (
-    <div className="relative rounded-xl overflow-hidden border border-white/10 glass-panel shadow-2xl flex flex-col">
-      {/* Top Filter Controls Bar */}
+    <div className="relative rounded-lg overflow-hidden border border-slate-300 bg-[#0b1329] shadow-sm">
+      {/* Top Filter & Layer Bar */}
       {showControlsBar && (
-        <div className="bg-[#090e1b]/95 border-b border-white/8 p-3 flex flex-wrap items-center justify-between gap-3 z-10">
-          {/* Sensor Filter Buttons */}
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-xs font-semibold text-slate-300 mr-1 flex items-center gap-1.5">
-              <Layers className="w-3.5 h-3.5 text-orange-400" />
-              Sensor Layer:
+        <div className="absolute top-3 left-3 z-20 flex flex-wrap items-center gap-2 bg-white/95 backdrop-blur-sm border border-slate-200 px-3 py-1.5 rounded-md shadow-sm text-xs">
+          <div className="flex items-center gap-1.5 text-slate-700">
+            <Layers className="w-3.5 h-3.5 text-slate-500" />
+            <span className="font-semibold text-[11px] uppercase tracking-wider text-slate-500">
+              Sensor:
             </span>
-            <button
-              onClick={() => setSensorFilter("ALL")}
-              className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${
-                sensorFilter === "ALL"
-                  ? "bg-slate-700 text-white font-semibold shadow-sm"
-                  : "text-slate-400 hover:text-slate-200 bg-slate-900/60"
-              }`}
+            <select
+              value={sensorFilter}
+              onChange={(e) => setSensorFilter(e.target.value as SensorType)}
+              className="bg-slate-50 border border-slate-300 rounded px-2 py-0.5 text-xs text-slate-800 font-medium focus:outline-none focus:border-slate-500"
             >
-              All Sensors
-            </button>
-            <button
-              onClick={() => setSensorFilter("VIIRS")}
-              className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${
-                sensorFilter === "VIIRS"
-                  ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-semibold"
-                  : "text-slate-400 hover:text-cyan-300 bg-slate-900/60"
-              }`}
-            >
-              VIIRS (375m)
-            </button>
-            <button
-              onClick={() => setSensorFilter("MODIS")}
-              className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${
-                sensorFilter === "MODIS"
-                  ? "bg-purple-500/20 text-purple-300 border border-purple-500/40 font-semibold"
-                  : "text-slate-400 hover:text-purple-300 bg-slate-900/60"
-              }`}
-            >
-              MODIS (1km)
-            </button>
-            <button
-              onClick={() => setSensorFilter("HARMONIZED")}
-              className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${
-                sensorFilter === "HARMONIZED"
-                  ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold"
-                  : "text-slate-400 hover:text-amber-300 bg-slate-900/60"
-              }`}
-            >
-              Harmonized Dual-Pass
-            </button>
+              <option value="ALL">All Sensors</option>
+              <option value="VIIRS">VIIRS (375m)</option>
+              <option value="MODIS">MODIS (1000m)</option>
+              <option value="HARMONIZED">Harmonized Pairs Only</option>
+            </select>
           </div>
 
-          {/* FRP Sensitivity Slider & Live Status */}
-          <div className="flex items-center gap-3 text-xs text-slate-400">
-            {isLive ? (
-              <span className="hidden md:inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-semibold">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                NASA FIRMS LIVE
-              </span>
-            ) : (
-              <span className="hidden md:inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono bg-amber-500/10 text-amber-300 border border-amber-500/20">
-                DEMO FIXTURES
-              </span>
-            )}
-            <div className="flex items-center gap-1.5">
-              <Flame className="w-3.5 h-3.5 text-orange-400" />
-              <span className="hidden sm:inline">Min FRP:</span>
-              <input
-                type="range"
-                min="0"
-                max="500"
-                step="50"
-                value={minFrp}
-                onChange={(e) => setMinFrp(Number(e.target.value))}
-                className="w-24 accent-orange-500 cursor-pointer"
-              />
-              <span className="font-mono text-orange-300 w-12 text-right">
-                {minFrp > 0 ? `>${minFrp} MW` : "All"}
-              </span>
-            </div>
+          <div className="h-4 w-px bg-slate-200" />
+
+          <div className="flex items-center gap-1.5 text-slate-700">
+            <span className="font-semibold text-[11px] uppercase tracking-wider text-slate-500">
+              Min FRP:
+            </span>
+            <select
+              value={minFrp}
+              onChange={(e) => setMinFrp(Number(e.target.value))}
+              className="bg-slate-50 border border-slate-300 rounded px-2 py-0.5 text-xs text-slate-800 font-medium focus:outline-none focus:border-slate-500"
+            >
+              <option value={0}>All Radiance (0+ MW)</option>
+              <option value={50}>Moderate (50+ MW)</option>
+              <option value={100}>High (100+ MW)</option>
+              <option value={300}>Severe (300+ MW)</option>
+            </select>
           </div>
         </div>
       )}
 
-      {/* Map Container Element */}
-      <div className={`w-full ${heightClass} relative bg-[#070c17]`}>
-        <div ref={mapContainer} className="w-full h-full" />
+      {/* Basemap Switcher (Top Right) */}
+      <div className="absolute top-3 right-3 z-20 flex items-center gap-1 bg-white/95 backdrop-blur-sm border border-slate-200 p-1 rounded-md shadow-sm text-xs">
+        <button
+          onClick={() => setBasemap("dark")}
+          className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
+            basemap === "dark"
+              ? "bg-slate-900 text-white"
+              : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+          }`}
+        >
+          Dark
+        </button>
+        <button
+          onClick={() => setBasemap("satellite")}
+          className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
+            basemap === "satellite"
+              ? "bg-slate-900 text-white"
+              : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+          }`}
+        >
+          Satellite
+        </button>
+        <button
+          onClick={() => setBasemap("light")}
+          className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
+            basemap === "light"
+              ? "bg-slate-900 text-white"
+              : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+          }`}
+        >
+          Light
+        </button>
+      </div>
 
-        {/* Region Presets Floating Pill Bar */}
-        <div className="absolute top-4 left-4 z-10 flex flex-wrap items-center gap-1.5 p-1.5 bg-[#090e1b]/90 backdrop-blur-md rounded-xl border border-white/10 shadow-lg max-w-[calc(100%-2rem)]">
-          <span className="text-[11px] font-semibold text-slate-400 px-2 flex items-center gap-1">
-            <Compass className="w-3 h-3 text-cyan-400" />
-            Hot Zones:
-          </span>
-          <button
-            onClick={() => handleFlyToRegion("global")}
-            className={`px-2 py-0.5 rounded text-[11px] font-medium transition-all ${
-              activeRegion === "global"
-                ? "bg-orange-500/20 text-orange-300 border border-orange-500/30"
-                : "text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            Global View
-          </button>
-          {DEMO_REGIONS.map((reg) => (
-            <button
-              key={reg.regionId}
-              onClick={() => handleFlyToRegion(reg.regionId)}
-              className={`px-2 py-0.5 rounded text-[11px] font-medium transition-all ${
-                activeRegion === reg.regionId
-                  ? "bg-orange-500/20 text-orange-300 border border-orange-500/30 font-semibold"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              {reg.regionName.split(" ")[0]}
-            </button>
-          ))}
+      {/* Map Zoom / View Controls (Bottom Right) */}
+      <div className="absolute bottom-8 right-3 z-20 flex flex-col gap-1">
+        <button
+          onClick={handleZoomIn}
+          title="Zoom In"
+          className="map-ctrl-btn"
+        >
+          <ZoomIn className="w-4 h-4" />
+        </button>
+        <button
+          onClick={handleZoomOut}
+          title="Zoom Out"
+          className="map-ctrl-btn"
+        >
+          <ZoomOut className="w-4 h-4" />
+        </button>
+        <button
+          onClick={handleResetView}
+          title="Reset Extent"
+          className="map-ctrl-btn"
+        >
+          <RotateCcw className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Bottom Coordinates & Scale HUD */}
+      <div className="absolute bottom-2 left-3 z-20 bg-slate-900/80 backdrop-blur-sm border border-slate-700/60 px-2.5 py-1 rounded text-[10px] font-mono text-slate-300 flex items-center gap-3">
+        <span>
+          LAT/LON: {cursorCoords ? `${cursorCoords.lat.toFixed(4)}°, ${cursorCoords.lng.toFixed(4)}°` : "Hover to track"}
+        </span>
+        <span className="text-slate-500">|</span>
+        <span>ZOOM: {zoomLevel.toFixed(1)}</span>
+        <span className="text-slate-500">|</span>
+        <span>WGS84 &bull; EPSG:3857</span>
+        <span className="text-slate-500">|</span>
+        <span className={isLive ? "text-emerald-400 font-semibold" : "text-amber-400 font-semibold"}>
+          {isLive ? "NASA FIRMS LIVE" : "DEMO FIXTURES"}
+        </span>
+      </div>
+
+      {/* Bottom Legend */}
+      <div className="absolute bottom-8 left-3 z-20 bg-white/95 backdrop-blur-sm border border-slate-200 px-3 py-2 rounded-md shadow-sm text-xs text-slate-700 space-y-1.5 hidden md:block">
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+          Legend
         </div>
-
-        {/* Map Floating Controls (Zoom in / Zoom out / Recenter) */}
-        <div className="absolute bottom-6 right-4 z-10 flex flex-col gap-1.5 bg-[#090e1b]/90 backdrop-blur-md p-1.5 rounded-xl border border-white/10 shadow-lg">
-          <button
-            onClick={() => mapInstance.current?.zoomIn()}
-            className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
-            title="Zoom in"
-          >
-            <ZoomIn className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => mapInstance.current?.zoomOut()}
-            className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
-            title="Zoom out"
-          >
-            <ZoomOut className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => handleFlyToRegion("global")}
-            className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
-            title="Reset to global view"
-          >
-            <Maximize2 className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* FRP Legend Floating Overlay */}
-        <div className="absolute bottom-6 left-4 z-10 bg-[#090e1b]/90 backdrop-blur-md p-3 rounded-xl border border-white/10 shadow-lg text-[11px] space-y-1.5 hidden sm:block">
-          <span className="font-semibold text-slate-300 block text-[10px] uppercase tracking-wider">
-            Fire Radiative Power (MW)
-          </span>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-yellow-400 shadow-[0_0_8px_rgba(234,179,8,0.5)]" />
-              <span className="text-slate-400">&lt;30 Low</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]" />
-              <span className="text-slate-400">30-80 Mod</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.6)]" />
-              <span className="text-slate-400">80-200 High</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.7)]" />
-              <span className="text-slate-400">&gt;200 Extreme</span>
-            </div>
+        <div className="flex items-center gap-4 text-[11px] font-mono">
+          <div className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#0284c7] border border-white" />
+            <span>VIIRS (375m)</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#7c3aed] border border-white" />
+            <span>MODIS (1km)</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-full bg-[#ea580c] border-2 border-[#4f46e5]" />
+            <span>Dual Match</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-full bg-[#dc2626] border border-white" />
+            <span>&gt;300 MW</span>
           </div>
         </div>
       </div>
+
+      {/* MapLibre DOM Target */}
+      <div ref={mapContainer} className={`w-full ${heightClass}`} />
     </div>
   );
 };
