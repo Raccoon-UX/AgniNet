@@ -1,0 +1,41 @@
+# Render Blueprint specification for AgniNet
+# Automatically provisions FastAPI backend with persistent disk storage and Next.js frontend.
+# Reference: https://render.com/docs/blueprint-spec
+
+services:
+  # AgniNet FastAPI Backend Service
+  - type: web
+    name: agninet-api
+    env: python
+    plan: starter  # Persistent disk requires starter plan or higher on Render
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port $PORT
+    disk:
+      name: agninet-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: DATABASE_PATH
+        value: /var/data/agninet_historical.db
+      - key: ENVIRONMENT
+        value: production
+      - key: INGESTION_API_KEY
+        generateValue: true
+      - key: NASA_ARCHIVE_INGESTION_KEY
+        generateValue: true
+      - key: NASA_FIRMS_MAP_KEY
+        sync: false  # Must be manually entered in Render Dashboard under Environment
+
+  # AgniNet Next.js Frontend Service
+  - type: web
+    name: agninet-web
+    env: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: agninet-api
+          property: host

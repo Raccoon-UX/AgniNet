@@ -363,3 +363,19 @@ export interface HistoricalEventsResponse {
   provenance: string;
   fetched_at: string;
 }
+
+export interface HistoricalIngestionRequest {
+  observations: Record<string, unknown>[];
+  provenance?: string;
+  ingestion_source?: "MANUAL" | "COMMUNITY" | "SYNTHETIC" | "VERIFIED_NASA_ARCHIVE";
+  replace_existing?: boolean;
+}
+
+export interface HistoricalIngestionResponse {
+  status: string;
+  records_received: number;
+  records_inserted: number;
+  records_updated: number;
+  timestamp_utc: string;
+  provenance: string;
+}

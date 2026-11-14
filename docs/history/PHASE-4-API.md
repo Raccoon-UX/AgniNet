@@ -1,6 +1,6 @@
-# AgniNet — Phase 4 & 4.1 Historical Analytics REST API Reference
+# AgniNet — Phase 4 & 4.1.1 Historical Analytics REST API Reference
 
-**Document Version:** 1.1.0  
+**Document Version:** 1.2.0  
 **Classification:** REST API Reference & Security Contract  
 **Base URL:** `/api/history`  
 **Protocol:** HTTP/1.1 JSON (UTF-8)  
@@ -10,7 +10,7 @@
 
 ## 1. Overview
 
-The Historical Fire Analytics API provides high-efficiency endpoints for querying persisted fire observations, computing temporal activity trends, generating dimensionless severity calendar heatmaps, performing regional biome aggregations, breaking down satellite constellation distributions, and ingesting archive batches securely.
+The Historical Fire Analytics API provides high-efficiency endpoints for querying persisted fire observations, computing temporal activity trends, generating dimensionless comparative activity calendar heatmaps, performing regional biome aggregations, breaking down satellite constellation distributions, and ingesting archive batches securely.
 
 All responses adhere strictly to ISO 8601 timestamps (`YYYY-MM-DD`, `HH:MM`, `YYYY-MM-DDTHH:MM:SSZ`), WGS84 coordinates, and enforce scientific separation of MODIS and VIIRS Fire Radiative Power (FRP).
 
@@ -112,12 +112,13 @@ Computes time-series trend buckets aggregated by day, week, or month.
 ---
 
 ### 3.3 `GET /api/history/calendar`
-Generates a complete daily active-fire matrix with normalized dimensionless severity indices.
+Generates a complete daily active-fire matrix with normalized dimensionless comparative activity indices.
 
-#### Scientific Normalization Formula
-The `intensity_index` ($0 - 100$) is computed strictly via dimensionless scaling against each sensor's period maximum:
+#### Scientific Terminology & Comparative Activity Methodology
+The `intensity_index` ($0 - 100$) represents a **sensor-normalized comparative activity index** relative to the peak single-day activity observed within the requested query window:
 $$\hat{M}_d = \frac{M_d}{M_{\max}}, \quad \hat{V}_d = \frac{V_d}{V_{\max}}, \quad S_d = \frac{\hat{M}_d + \hat{V}_d}{2}$$
-At no point are MODIS and VIIRS Megawatts added together.
+- **Normalization Context:** Normalization depends on the selected observation period.
+- **Physical Caveat:** The index does **not** represent absolute physical fire severity or combined FRP. MODIS and VIIRS Fire Radiative Power values are never summed and remain strictly separated.
 
 #### Response Schema (`HistoricalCalendarResponse`)
 ```json
@@ -270,17 +271,24 @@ Protected endpoint for idempotently inserting or updating historical observation
 | Header | Required | Description |
 |:---|:---|:---|
 | `X-Ingestion-Key` | Yes | Token matching server `INGESTION_API_KEY`. |
+| `X-NASA-Archive-Token` | Conditional | Required when `ingestion_source="VERIFIED_NASA_ARCHIVE"`. Matches `NASA_ARCHIVE_INGESTION_KEY`. |
 | `Authorization` | Alternative | `Bearer <token>` format matching `INGESTION_API_KEY`. |
 
-- **HTTP 403 Forbidden:** Returned when `INGESTION_API_KEY` is unset on the server.
+- **HTTP 403 Forbidden:** Returned when `INGESTION_API_KEY` is unset on the server, or when `ingestion_source="VERIFIED_NASA_ARCHIVE"` without valid `X-NASA-Archive-Token`.
 - **HTTP 401 Unauthorized:** Returned when credential token is missing or invalid.
 - **HTTP 400 Bad Request:** Returned when payload has 0 records or $> 1,000$ records (`MAX_INGESTION_BATCH_SIZE`).
-- **HTTP 422 Unprocessable Entity:** Returned when coordinate or date bounds are violated.
+- **HTTP 422 Unprocessable Entity:** Returned when coordinate bounds, calendar dates, or conflicting provenance strings are detected.
+
+#### Provenance Trust Rules
+1. **Server-Authoritative Enforcement:** Client-supplied `is_live=true` is **never** trusted for `MANUAL`, `COMMUNITY`, or `SYNTHETIC` ingestion sources; the server automatically overrides `is_live = false`.
+2. **Conflicting Claims:** Non-NASA ingestions attempting to declare NASA live provenance strings are rejected with **HTTP 422**.
+3. **Audit Trail:** Original client flags and server override decisions are persisted in each observation's `raw_fields_json`.
 
 #### Request Schema (`HistoricalIngestionRequest`)
 ```json
 {
-  "provenance": "NASA_FIRMS_ARCHIVE_BATCH_01",
+  "ingestion_source": "MANUAL",
+  "provenance": "COMMUNITY_SURVEY_2026",
   "observations": [
     {
       "id": "HIST_OBS_20260901_001",
@@ -311,7 +319,7 @@ Protected endpoint for idempotently inserting or updating historical observation
   "records_inserted": 1,
   "records_updated": 0,
   "timestamp_utc": "2026-11-14T07:25:00.000Z",
-  "provenance": "NASA_FIRMS_ARCHIVE_BATCH_01"
+  "provenance": "MANUAL:COMMUNITY_SURVEY_2026"
 }
 ```
 If duplicate IDs are submitted in subsequent requests, records are updated in place with zero duplicate row creation (`records_inserted: 0`, `records_updated: 1`, total database row count unchanged).

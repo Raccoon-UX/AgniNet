@@ -26,6 +26,7 @@ class Settings(BaseSettings):
 
     # Ingestion Security & Limits
     ingestion_api_key: Optional[str] = Field(default=None, alias="INGESTION_API_KEY")
+    nasa_archive_ingestion_key: Optional[str] = Field(default=None, alias="NASA_ARCHIVE_INGESTION_KEY")
     max_ingestion_batch_size: int = Field(default=1000, alias="MAX_INGESTION_BATCH_SIZE")
 
     model_config = SettingsConfigDict(

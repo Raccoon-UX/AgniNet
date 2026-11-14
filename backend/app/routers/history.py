@@ -267,15 +267,26 @@ def _verify_ingestion_auth(
         )
 
 
+def _verify_nasa_archive_auth(x_nasa_archive_token: Optional[str]) -> bool:
+    """Verifies whether an ingestion request carries valid NASA archive credentials."""
+    expected = settings.nasa_archive_ingestion_key
+    if not expected or not x_nasa_archive_token:
+        return False
+    return secrets.compare_digest(x_nasa_archive_token.strip(), expected.strip())
+
+
 @router.post("/ingest", response_model=HistoricalIngestionResponse)
 async def ingest_historical_records(
     payload: HistoricalIngestionRequest,
     x_ingestion_key: Optional[str] = Header(default=None, alias="X-Ingestion-Key"),
+    x_nasa_archive_token: Optional[str] = Header(default=None, alias="X-NASA-Archive-Token"),
     authorization: Optional[str] = Header(default=None),
 ) -> HistoricalIngestionResponse:
     """
     Ingests validated normalized fire observations into the historical archive.
     Deduplicates idempotently on observation.id. Protected by API key authentication.
+    Provenance is strictly server-authoritative: client-supplied is_live=True is never trusted
+    unless authenticated as a verified NASA archive workflow.
     """
     _verify_ingestion_auth(x_ingestion_key=x_ingestion_key, authorization=authorization)
 
@@ -295,10 +306,45 @@ async def ingest_historical_records(
             detail="Invalid provenance format: must be 3-64 alphanumeric, dash, dot, or underscore characters.",
         )
 
+    # Determine whether request is authenticated as trusted NASA archive workflow
+    is_trusted_nasa = False
+    if payload.ingestion_source == "VERIFIED_NASA_ARCHIVE":
+        if not _verify_nasa_archive_auth(x_nasa_archive_token):
+            raise HTTPException(
+                status_code=403,
+                detail="Unauthorized: Ingestion source 'VERIFIED_NASA_ARCHIVE' requires valid X-NASA-Archive-Token authorization.",
+            )
+        is_trusted_nasa = True
+    else:
+        # Reject client attempting to claim NASA live provenance on unverified ingestion source
+        upper_prov = clean_prov.upper()
+        if "NASA_FIRMS_LIVE" in upper_prov or "NASA_LIVE" in upper_prov or "VERIFIED_NASA" in upper_prov:
+            raise HTTPException(
+                status_code=422,
+                detail="Conflicting provenance: Non-NASA ingestion source cannot claim NASA live archive provenance.",
+            )
+
     valid_obs: List[NormalizedObservation] = []
     for idx, raw in enumerate(payload.observations):
         try:
-            obs = NormalizedObservation(**raw)
+            # Server-authoritative provenance enforcement
+            raw_record = dict(raw)
+            raw_fields = dict(raw_record.get("raw_fields") or {})
+
+            if is_trusted_nasa:
+                raw_record["is_live"] = True
+                raw_fields["ingestion_source"] = "VERIFIED_NASA_ARCHIVE"
+                raw_fields["server_provenance_enforced"] = "is_live verified via NASA archive authorization"
+            else:
+                # NEVER trust client-supplied is_live=True for non-NASA ingestion
+                client_claimed_live = raw_record.get("is_live", False)
+                raw_record["is_live"] = False
+                raw_fields["client_supplied_is_live"] = client_claimed_live
+                raw_fields["server_provenance_enforced"] = "is_live forced to False: manual/external ingestion source"
+                raw_fields["ingestion_source"] = payload.ingestion_source
+
+            raw_record["raw_fields"] = raw_fields
+            obs = NormalizedObservation(**raw_record)
 
             # Record bounds & validity checks
             if not (-90.0 <= obs.latitude <= 90.0):
@@ -323,12 +369,15 @@ async def ingest_historical_records(
         except Exception as e:
             # Sanitize exception message so internal details/secrets are not leaked
             clean_err = str(e).replace(settings.ingestion_api_key or "___NOKEY___", "[REDACTED]")
+            if settings.nasa_archive_ingestion_key:
+                clean_err = clean_err.replace(settings.nasa_archive_ingestion_key, "[REDACTED]")
             raise HTTPException(
                 status_code=422,
                 detail=f"Record at index {idx} failed validation: {clean_err}",
             )
 
+    server_prov = f"NASA_ARCHIVE:{clean_prov}" if is_trusted_nasa else f"{payload.ingestion_source}:{clean_prov}"
     return historical_service.ingest_observations(
         observations=valid_obs,
-        provenance=clean_prov,
+        provenance=server_prov,
     )

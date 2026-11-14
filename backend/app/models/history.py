@@ -151,6 +151,10 @@ class HistoricalEventsResponse(BaseModel):
 class HistoricalIngestionRequest(BaseModel):
     observations: List[Dict[str, Any]] = Field(description="Raw or normalized observation records to ingest")
     provenance: str = Field(default="MANUAL_INGESTION", description="Data source provenance identifier")
+    ingestion_source: Literal["MANUAL", "COMMUNITY", "SYNTHETIC", "VERIFIED_NASA_ARCHIVE"] = Field(
+        default="MANUAL",
+        description="Ingestion workflow category. Only server-verified VERIFIED_NASA_ARCHIVE workflows can persist live observations.",
+    )
     replace_existing: bool = Field(default=True, description="Whether to update on duplicate record ID")
 
 

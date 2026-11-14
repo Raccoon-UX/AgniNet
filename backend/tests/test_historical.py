@@ -407,3 +407,171 @@ def test_deployment_persistence_custom_database_path(tmp_path):
     service = HistoricalService(db_path=mount_db)
     count = service.repo.count_observations()
     assert count >= 0
+
+
+def test_provenance_spoofing_prevention():
+    """
+    Proves that a client cannot promote manual or synthetic records to NASA live data.
+    Server-authoritative provenance overrides client is_live claims and rejects spoofed tokens.
+    """
+    import uuid
+    from app.config import settings
+
+    orig_ingest_key = settings.ingestion_api_key
+    orig_nasa_key = settings.nasa_archive_ingestion_key
+    settings.ingestion_api_key = "ingest-key-123"
+    settings.nasa_archive_ingestion_key = "nasa-vault-token-xyz"
+
+    try:
+        # Case 1: Client sends is_live=True on manual ingestion -> server must override is_live=False
+        fake_live_id = f"SPOOF-ATTEMPT-{uuid.uuid4().hex[:8]}"
+        payload_manual_claim = {
+            "ingestion_source": "MANUAL",
+            "provenance": "MANUAL_BATCH",
+            "observations": [
+                {
+                    "id": fake_live_id,
+                    "latitude": 15.0,
+                    "longitude": 25.0,
+                    "acquisition_date": "2026-08-10",
+                    "satellite": "Aqua",
+                    "instrument": "MODIS",
+                    "sensor_source": "MODIS_NRT",
+                    "is_live": True,  # Client attempts to spoof live status!
+                }
+            ],
+        }
+        resp = client.post(
+            "/api/history/ingest",
+            headers={"X-Ingestion-Key": "ingest-key-123"},
+            json=payload_manual_claim,
+        )
+        assert resp.status_code == 200
+
+        # Query database directly to verify stored record has is_live=False
+        from app.services.historical_service import historical_service
+        stored = historical_service.repo.query_observations()
+        record = next((o for o in stored if o.id == fake_live_id), None)
+        assert record is not None
+        assert record.is_live is False, "Server unlawfully trusted client-supplied is_live=True!"
+        assert "is_live forced to False" in record.raw_fields.get("server_provenance_enforced", "")
+
+        # Case 2: Client claims VERIFIED_NASA_ARCHIVE without valid NASA archive token -> 403 Forbidden
+        payload_unauth_nasa = {
+            "ingestion_source": "VERIFIED_NASA_ARCHIVE",
+            "provenance": "NASA_ARCHIVE_BATCH",
+            "observations": [
+                {
+                    "id": f"UNAUTH-NASA-{uuid.uuid4().hex[:8]}",
+                    "latitude": 15.0,
+                    "longitude": 25.0,
+                    "acquisition_date": "2026-08-10",
+                    "satellite": "Aqua",
+                    "instrument": "MODIS",
+                    "sensor_source": "MODIS_NRT",
+                }
+            ],
+        }
+        resp_unauth = client.post(
+            "/api/history/ingest",
+            headers={"X-Ingestion-Key": "ingest-key-123", "X-NASA-Archive-Token": "bad-token"},
+            json=payload_unauth_nasa,
+        )
+        assert resp_unauth.status_code == 403
+        assert "requires valid X-NASA-Archive-Token" in resp_unauth.json()["detail"]
+
+        # Case 3: Client attempts to pass NASA live provenance with non-NASA source -> 422 Unprocessable
+        payload_conflicting = {
+            "ingestion_source": "MANUAL",
+            "provenance": "NASA_FIRMS_LIVE_SPOOF",
+            "observations": [
+                {
+                    "id": f"CONFLICT-{uuid.uuid4().hex[:8]}",
+                    "latitude": 15.0,
+                    "longitude": 25.0,
+                    "acquisition_date": "2026-08-10",
+                    "satellite": "Aqua",
+                    "instrument": "MODIS",
+                    "sensor_source": "MODIS_NRT",
+                }
+            ],
+        }
+        resp_conflict = client.post(
+            "/api/history/ingest",
+            headers={"X-Ingestion-Key": "ingest-key-123"},
+            json=payload_conflicting,
+        )
+        assert resp_conflict.status_code == 422
+        assert "Non-NASA ingestion source cannot claim NASA live archive provenance" in resp_conflict.json()["detail"]
+
+        # Case 4: Valid NASA archive workflow with token -> successfully persists is_live=True
+        valid_nasa_id = f"VALID-NASA-{uuid.uuid4().hex[:8]}"
+        payload_valid_nasa = {
+            "ingestion_source": "VERIFIED_NASA_ARCHIVE",
+            "provenance": "NASA_LANCE_ARCHIVE",
+            "observations": [
+                {
+                    "id": valid_nasa_id,
+                    "latitude": -10.0,
+                    "longitude": -55.0,
+                    "acquisition_date": "2026-08-10",
+                    "satellite": "NOAA-20",
+                    "instrument": "VIIRS",
+                    "sensor_source": "VIIRS_NOAA20_NRT",
+                    "is_live": True,
+                }
+            ],
+        }
+        resp_valid_nasa = client.post(
+            "/api/history/ingest",
+            headers={"X-Ingestion-Key": "ingest-key-123", "X-NASA-Archive-Token": "nasa-vault-token-xyz"},
+            json=payload_valid_nasa,
+        )
+        assert resp_valid_nasa.status_code == 200
+        stored_nasa = next((o for o in historical_service.repo.query_observations() if o.id == valid_nasa_id), None)
+        assert stored_nasa is not None
+        assert stored_nasa.is_live is True, "Legitimate NASA archive ingestion must have is_live=True"
+
+    finally:
+        settings.ingestion_api_key = orig_ingest_key
+        settings.nasa_archive_ingestion_key = orig_nasa_key
+
+
+def test_render_blueprint_deployment_configuration():
+    """
+    Verifies that root render.yaml is present, valid YAML, and configures
+    persistent disk mounts and secret generation securely.
+    """
+    import os
+    import yaml
+
+    repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    render_yaml_path = os.path.join(repo_root, "render.yaml")
+
+    assert os.path.isfile(render_yaml_path), "render.yaml must exist at repository root."
+
+    with open(render_yaml_path, "r", encoding="utf-8") as f:
+        blueprint = yaml.safe_load(f)
+
+    assert "services" in blueprint
+    services = blueprint["services"]
+    assert len(services) >= 1
+
+    api_service = next((s for s in services if s.get("name") in {"agninet-api", "agninet-backend"}), None)
+    assert api_service is not None, "render.yaml must define agninet-api service."
+
+    # Verify persistent disk
+    assert "disk" in api_service, "Backend service must declare persistent disk."
+    disk = api_service["disk"]
+    assert disk["mountPath"] == "/var/data"
+    assert disk["name"] == "agninet-data"
+
+    # Verify environment variables
+    env_vars = {item["key"]: item for item in api_service.get("envVars", [])}
+    assert "DATABASE_PATH" in env_vars
+    assert env_vars["DATABASE_PATH"]["value"] == "/var/data/agninet_historical.db"
+
+    # Verify secrets use generateValue or sync:false (NO raw secret strings)
+    assert env_vars.get("INGESTION_API_KEY", {}).get("generateValue") is True
+    assert env_vars.get("NASA_ARCHIVE_INGESTION_KEY", {}).get("generateValue") is True
+    assert env_vars.get("NASA_FIRMS_MAP_KEY", {}).get("sync") is False

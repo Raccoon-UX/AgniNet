@@ -1,21 +1,20 @@
-# AgniNet — Phase 4 & 4.1 Historical Fire Analytics Architecture
+# AgniNet — Phase 4, 4.1 & 4.1.1 Historical Analytics Architecture
 
-**Document Version:** 1.1.0  
-**Status:** IMPLEMENTED & PRODUCTION HARDENED  
-**Classification:** Core System Architecture, Persistence & Security Specification  
+**Document Version:** 1.2.0  
+**Status:** IMPLEMENTED, SECURITY AUDITED & PRODUCTION HARDENED  
+**Classification:** Core System Architecture, Persistence, Provenance & Deployment Specification  
 **Date:** November 2026  
 
 ---
 
 ## 1. Executive Summary
 
-Phase 4 & Phase 4.1 establish a production-grade, scientifically hardened historical fire analytics platform for AgniNet. Integrating the frozen Phase 3.1.1 cross-sensor harmonization engine (`AgniNet-Harmonize-v1.1.1`), the system provides multi-temporal archive ingestion, daily/weekly/monthly activity trends, a dimensionless sensor-normalized fire severity calendar, regional fire regime rollups, and paginated event browsing.
+Phase 4 through Phase 4.1.1 establish a production-grade, scientifically hardened historical fire analytics and temporal intelligence platform for AgniNet. Built atop the frozen Phase 3.1.1 cross-sensor harmonization engine (`AgniNet-Harmonize-v1.1.1`), the system provides multi-temporal archive ingestion, activity trends across multiple time bins, a sensor-normalized comparative fire activity calendar, regional fire regime rollups, and paginated event browsing.
 
-Phase 4.1 hardens the platform for production deployment:
-1. **Scientific Integrity:** Replaces cross-sensor FRP summation in calendar analytics with a dimensionless, sensor-normalized thermal severity index.
-2. **Production Persistence:** Adds configurable database storage via `DATABASE_PATH`, documented Render Persistent Disk architecture (`/var/data`), and automated directory creation for absolute mount paths.
-3. **Provenance Integrity:** Implements a strict 4-state provenance classifier (`EMPTY_ARCHIVE`, `DEMO_HISTORICAL_ARCHIVE`, `NASA_FIRMS_LIVE_ARCHIVE`, `MIXED_HISTORICAL_ARCHIVE`) with explicit `is_synthetic` flags.
-4. **Ingestion Security:** Protects write operations on `/api/history/ingest` with timing-safe API-key authentication, batch throttling (max 1,000 records), radiometric bounds validation, and secret masking.
+Phase 4.1.1 reinforces provenance trust and deployment verification:
+1. **Server-Authoritative Provenance:** Never trusts client-supplied `is_live=True`. Strictly separates verified NASA archive ingestion from manual, community, and demo ingestion workflows. Overrides conflicting client flags and preserves auditable source metadata per observation.
+2. **Production Render Blueprint:** Root-level `render.yaml` declares services for the FastAPI backend and Next.js frontend, persistent disk mounts (`/var/data`), and Render-managed secret generation (`generateValue: true`).
+3. **Comparative Activity Index:** Consistently defines the calendar metric as a **sensor-normalized comparative activity index** relative to the query window, avoiding false equivalences with absolute physical energy or cross-sensor combined FRP.
 
 ---
 
@@ -25,13 +24,15 @@ Phase 4.1 hardens the platform for production deployment:
 ┌────────────────────────────────────────────────────────────────────────┐
 │                   Frontend Presentation Tier (Next.js)                 │
 │  - /historical: Multi-tab interactive dashboard (Trends, Biomes, FRP)  │
-│  - /calendar: Dimensionless thermal severity calendar heatmap matrix   │
+│  - /calendar: Sensor-normalized comparative activity calendar matrix   │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │ HTTP / REST (JSON)
 ┌───────────────────────────────────▼────────────────────────────────────┐
 │                  API & Routing Tier (FastAPI Routers)                  │
 │  - backend/app/routers/history.py (7 REST Endpoints)                   │
-│  - Security: verify_ingestion_auth (X-Ingestion-Key / Bearer)          │
+│  - Auth: verify_ingestion_auth (X-Ingestion-Key / Bearer)              │
+│  - NASA Auth: verify_nasa_archive_auth (X-NASA-Archive-Token)          │
+│  - Provenance: Server-authoritative is_live override & validation      │
 │  - Validation: ISO dates, Bounding Box constraints, batch throttling   │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │ Python Domain Calls
@@ -39,7 +40,7 @@ Phase 4.1 hardens the platform for production deployment:
 │                    Domain Services & Analytics Tier                    │
 │  - backend/app/services/historical_service.py                          │
 │    - Provenance State Machine (_determine_provenance)                  │
-│    - Dimensionless Sensor-Normalized Calendar Index (0-100)            │
+│    - Dimensionless Sensor-Normalized Comparative Activity Index        │
 │    - HarmonizationEngine invocation (AgniNet-Harmonize-v1.1.1)         │
 │    - Biome spatial bounding box classification                         │
 │  - backend/app/services/historical_fixtures.py (180-day baseline)      │
@@ -56,87 +57,106 @@ Phase 4.1 hardens the platform for production deployment:
 
 ---
 
-## 3. Storage Layer & Production Deployment Persistence
+## 3. Storage Layer & Render Deployment Blueprint
 
-### 3.1 Choice of Persistent Store & Portability
+### 3.1 Choice of Persistent Store & Concurrency
 - **Engine:** SQLite 3 in WAL (`Write-Ahead Logging`) mode with `synchronous = NORMAL`.
-- **Concurrency:** Enables non-blocking concurrent reads while handling atomic write batches.
-- **Portability:** Database interaction is strictly mediated through `HistoricalRepository`, isolating SQL dialect specifics to simplify future migration to PostgreSQL / PostGIS.
-- **Version Control Safety:** SQLite database files (`*.db`, `*.sqlite`, `*.sqlite3`) are strictly ignored via `.gitignore` and are never committed to the repository.
+- **ACID Transactions:** Ensures atomicity during batch upsert operations.
+- **Portability:** Encapsulated behind `HistoricalRepository`, facilitating clean future migration to PostgreSQL/PostGIS.
+- **Version Control Safety:** SQLite files are strictly excluded from git tracking via `.gitignore`.
 
-### 3.2 Production Deployment Persistence on Render
-> [!WARNING]
-> Standard container deployments (Render Web Services, Fly.io, Heroku) run in ephemeral container filesystems. Any database written to the default relative path will be wiped on every redeploy or container restart!
+### 3.2 Render Blueprint Configuration (`render.yaml`)
+To prevent data loss in containerized ephemeral environments, persistent disk storage is explicitly declared:
 
-To ensure durable persistence in production:
-1. **Provision a Render Persistent Disk:**
-   - Disk Name: `agninet-data`
-   - Mount Path: `/var/data`
-   - Size: Minimum 1 GB
-2. **Configure Environment Variables:**
-   - `DATABASE_PATH=/var/data/agninet_historical.db`
-   - `INGESTION_API_KEY=<random-secret-token>`
-3. **Directory Creation Guarantee:**
-   When `init_db()` is called on server startup, it calls `os.makedirs(os.path.dirname(target_path), exist_ok=True)`. This automatically creates any missing parent directories (`/var/data`) on an attached mount point before opening the database connection.
+```yaml
+services:
+  # AgniNet FastAPI Backend Service
+  - type: web
+    name: agninet-api
+    env: python
+    plan: starter  # Persistent disk requires starter plan or higher on Render
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port $PORT
+    disk:
+      name: agninet-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: DATABASE_PATH
+        value: /var/data/agninet_historical.db
+      - key: ENVIRONMENT
+        value: production
+      - key: INGESTION_API_KEY
+        generateValue: true
+      - key: NASA_ARCHIVE_INGESTION_KEY
+        generateValue: true
+      - key: NASA_FIRMS_MAP_KEY
+        sync: false  # Must be manually entered in Render Dashboard under Environment
 
----
-
-## 4. Ingestion Security & Bounds Validation
-
-The `/api/history/ingest` endpoint is protected against unauthorized public writes and malformed inputs:
-
-1. **Authentication Layer:**
-   - Requires `X-Ingestion-Key` header or `Authorization: Bearer <key>`.
-   - Verified via `secrets.compare_digest()` for timing-attack immunity.
-   - If `INGESTION_API_KEY` is unset on the server, write access is locked by default (HTTP 403 Forbidden).
-   - Missing or invalid credentials return HTTP 401 Unauthorized.
-2. **Batch Throttling:**
-   - Payloads with $> 1,000$ observations (configurable via `MAX_INGESTION_BATCH_SIZE`) are rejected with HTTP 400 Bad Request.
-3. **Radiometric & Geographic Validation:**
-   - Latitude: $-90.0 \le \text{lat} \le 90.0$
-   - Longitude: $-180.0 \le \text{lon} \le 180.0$
-   - FRP: $\ge 0.0\text{ MW}$
-   - Brightness: $100.0\text{ K} \le T_b \le 600.0\text{ K}$
-   - Acquisition Date: Strict Gregorian calendar validation (rejects invalid dates like Feb 30).
-   - Acquisition Time: Strict 24-hour UTC format `00:00` to `23:59`.
-4. **Secret Masking:**
-   - Exception handlers intercept and sanitize error strings to ensure API keys, internal tokens, or configuration paths are never leaked in HTTP responses or log output.
-
----
-
-## 5. Provenance Classification Architecture
-
-The `HistoricalService._determine_provenance()` method applies a 4-state classifier to eliminate ambiguity:
-
-```
-                  ┌──────────────────────┐
-                  │ Evaluate Query Obs   │
-                  └──────────┬───────────┘
-                             │
-            ┌────────────────┼────────────────┐
-            ▼                ▼                ▼
-     [len(obs) == 0]   [All o.is_live]   [All not is_live]
-            │                │                │
-            ▼                ▼                ▼
-     EMPTY_ARCHIVE    NASA_FIRMS_LIVE   DEMO_HISTORICAL
-     (is_live: false  (is_live: true    (is_live: false
-      synth: false)    synth: false)     synth: true)
-                             │
-                             ▼ [Both live & demo present]
-                      MIXED_HISTORICAL_ARCHIVE
-                      (is_live: false, synth: true)
+  # AgniNet Next.js Frontend Service
+  - type: web
+    name: agninet-web
+    env: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: agninet-api
+          property: host
 ```
 
-Synthetic fixtures are permanently labeled and will never be represented as authenticated NASA satellite telemetry.
+### 3.3 Manual Dashboard Setup
+1. **NASA FIRMS MAP KEY:** Set `NASA_FIRMS_MAP_KEY` in the Render Dashboard under `agninet-api` -> Environment.
+2. **Persistent Disk Attachment:** Render Starter plan provisions the `/var/data` disk automatically from the blueprint.
+3. **Directory Guarantee:** `init_db()` ensures `os.makedirs(os.path.dirname(target_path), exist_ok=True)` runs before establishing SQLite connections.
 
 ---
 
-## 6. Dimensionless Calendar Normalization Architecture
+## 4. Server-Authoritative Provenance & Ingestion Security
 
-To eliminate the physical error of summing MODIS and VIIRS FRP across different wavelengths ($4.0\,\mu\text{m}$ vs $3.74/4.05\,\mu\text{m}$) and footprints ($1\text{ km}$ vs $375\text{ m}$), the calendar matrix uses a sensor-normalized dimensionless formula:
+### 4.1 Provenance Spoofing Prevention Protocol
+Client payloads can NEVER self-certify as live NASA telemetry:
+1. **Source Separation:** `ingestion_source` categorizes workflows into `MANUAL`, `COMMUNITY`, `SYNTHETIC`, or `VERIFIED_NASA_ARCHIVE`.
+2. **Cryptographic NASA Verification:** `VERIFIED_NASA_ARCHIVE` requires `X-NASA-Archive-Token` matching `NASA_ARCHIVE_INGESTION_KEY`. Requests lacking this token return **HTTP 403 Forbidden**.
+3. **Client `is_live` Override:** For all non-NASA ingestions, the server forcefully overrides `is_live = False`, even if the client explicitly submitted `is_live: true`.
+4. **Audit Metadata Preservation:** The client's original claim and the server's override action are permanently preserved in the observation's `raw_fields_json`:
+   ```json
+   {
+     "client_supplied_is_live": true,
+     "server_provenance_enforced": "is_live forced to False: manual/external ingestion source",
+     "ingestion_source": "MANUAL"
+   }
+   ```
+5. **Conflicting Provenance Rejection:** Non-NASA ingestions claiming NASA live strings in `provenance` are rejected with **HTTP 422 Unprocessable Entity**.
 
-1. Calculate period peak daily cumulative output per sensor: $M_{\max}$ and $V_{\max}$.
-2. Normalize each day's cumulative output into a dimensionless ratio: $\hat{M}_d = M_d / M_{\max}$ and $\hat{V}_d = V_d / V_{\max}$.
-3. Average the active dimensionless ratios: $S_d = (\hat{M}_d + \hat{V}_d) / 2.0$.
-4. Scale to integer index: $\text{intensity\_index}_d = \min(100, \text{round}(100 \times S_d))$.
-5. Preserve separate $M_d$ and $V_d$ fields in the API payload without cross-sensor addition.
+### 4.2 Ingestion Throttling & Validation Bounds
+- Protected by `X-Ingestion-Key` / Bearer token via `secrets.compare_digest()`.
+- Maximum batch size: 1,000 observations per request (`MAX_INGESTION_BATCH_SIZE`).
+- Physical bounds: Latitude in $[-90, 90]$, Longitude in $[-180, 180]$, FRP $\ge 0$, Brightness in $[100, 600]\text{ K}$, valid calendar dates, and 24-hour UTC times.
+
+---
+
+## 5. Provenance Classification State Machine
+
+Every historical query passes through `HistoricalService._determine_provenance()`, which tags responses into 4 distinct categories:
+
+| Dataset Membership | `data_source` | `is_live` | `is_synthetic` | Provenance Label |
+|:---|:---|:---|:---|:---|
+| **Empty** | `EMPTY_ARCHIVE` | `false` | `false` | `AgniNet-Historical-Pipeline-v1.1 (Empty Store)` |
+| **Pure Live** | `NASA_FIRMS_LIVE_ARCHIVE` | `true` | `false` | `NASA_FIRMS_ARCHIVE (Authenticated Telemetry Archive, N records)` |
+| **Pure Demo** | `DEMO_HISTORICAL_ARCHIVE` | `false` | `true` | `DEMO_HISTORICAL_ARCHIVE (100% Modeled Synthetic Fixtures, N records)` |
+| **Mixed** | `MIXED_HISTORICAL_ARCHIVE` | `false` | `true` | `MIXED_ARCHIVE (N Live NASA Observations, M Synthetic Fixtures)` |
+
+---
+
+## 6. Scientific Methodology: Comparative Activity Index
+
+To eliminate the physical fallacy of cross-sensor FRP addition ($M_{\text{FRP}} + V_{\text{FRP}}$), the fire calendar implements a **sensor-normalized comparative activity index**:
+
+1. **Relative Scaling:** Each instrument's daily radiative output ($M_d$ and $V_d$) is scaled against its own maximum single-day output within the selected query window ($M_{\max}$ and $V_{\max}$).
+2. **Dimensionless Ratio:** $\hat{M}_d = M_d / M_{\max} \in [0, 1]$ and $\hat{V}_d = V_d / V_{\max} \in [0, 1]$.
+3. **Composite Index:** $S_d = (\hat{M}_d + \hat{V}_d) / 2.0$, scaled to integer $\text{intensity\_index}_d = \min(100, \text{round}(100 \times S_d))$.
+4. **Caveat:** The index is explicitly documented as a relative comparative indicator tied to the selected query window; it does **not** quantify absolute physical energy or cross-sensor combined FRP. Separate MODIS and VIIRS FRP values are preserved in full precision.

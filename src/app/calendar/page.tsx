@@ -85,7 +85,7 @@ export default function CalendarPage() {
       <PageHeader
         badge="Temporal Fire Regime"
         title="Fire Activity Calendar & Seasonality Matrix"
-        description="Daily fire occurrence index, seasonal burning cycles, and diurnal fire intensity metrics modeled from persistent historical satellite archives."
+        description="Daily sensor-normalized comparative fire activity index, seasonal burning cycles, and diurnal fire rhythms modeled from persistent satellite archives."
       />
 
       {/* Preset Controls & Provenance Banner */}
@@ -166,11 +166,11 @@ export default function CalendarPage() {
             <div className="flex items-center gap-2">
               <Flame className="w-4 h-4 text-orange-400" />
               <h3 className="text-base font-semibold text-white">
-                Daily Active Fire Thermal Severity Heatmap
+                Daily Sensor-Normalized Comparative Fire Activity Matrix
               </h3>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Normalized aggregate thermal severity across all active satellite passes (Scale: 0 - 100 Index relative to period max).
+              Dimensionless sensor-normalized comparative activity index (0 - 100). Normalization is relative to peak activity within the selected period and does not represent absolute physical energy or cross-sensor combined FRP.
             </p>
           </div>
 
